@@ -1,0 +1,46 @@
+name: Deploy to Production (Fly.io)
+
+on:
+  push:
+    branches:
+      - production
+  workflow_dispatch:  # możliwość ręcznego triggera z GitHub UI
+
+jobs:
+  deploy-engine:
+    name: Deploy Engine (prod)
+    runs-on: ubuntu-latest
+    environment: production  # wymaga manualnego approve w GitHub
+    steps:
+      - uses: actions/checkout@v4
+      - uses: superfly/flyctl-actions/setup-flyctl@master
+      - name: Deploy Engine
+        run: flyctl deploy --config fly.engine.prod.toml --remote-only
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+
+  deploy-api:
+    name: Deploy API (prod)
+    runs-on: ubuntu-latest
+    needs: deploy-engine
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+      - uses: superfly/flyctl-actions/setup-flyctl@master
+      - name: Deploy API
+        run: flyctl deploy --config fly.api.prod.toml --remote-only
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+
+  deploy-frontend:
+    name: Deploy Frontend (prod)
+    runs-on: ubuntu-latest
+    needs: deploy-api
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+      - uses: superfly/flyctl-actions/setup-flyctl@master
+      - name: Deploy Frontend
+        run: flyctl deploy --config fly.frontend.prod.toml --remote-only
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
