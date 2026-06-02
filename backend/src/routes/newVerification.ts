@@ -310,6 +310,16 @@ async function extractFrontDocument(
       }
       if (detectedCountry) ocrData.issuing_country = detectedCountry;
     }
+
+    // Fallback: detect country from raw OCR text keywords
+    // (e.g. Polish ID has MRZ only on back, so front won't have MRZ-based country)
+    if (!detectedCountry && ocrData.raw_text) {
+      const text = ocrData.raw_text.toUpperCase();
+      if (/IDPOL|RZECZPOSPOLITA\s*POLSKA|POLSKA|DOWOD\s*OSOBISTY|DOWÓD\s*OSOBISTY/.test(text)) {
+        detectedCountry = 'PL';
+        ocrData.issuing_country = 'PL';
+      }
+    }
   }
 
   // ── Tamper detection + zone validation (soft flags — Phase 1) ──────
@@ -411,23 +421,26 @@ async function extractBackDocument(
   let finalQrPayload = qrPayload;
   let barcodeFormat: 'PDF417' | 'QR_CODE' | 'DATA_MATRIX' | 'CODE_128' | 'MRZ_TD1' | 'MRZ_TD2' | 'MRZ_TD3' | null = barcodeData?.pdf417_data ? 'PDF417' : (barcodeData?.barcode_data ? 'QR_CODE' : null);
 
-  if (!qrPayload && mrzResult && mrzResult.fields) {
-    // Populate cross-validation fields from MRZ data
-    finalQrPayload = {
-      first_name: mrzResult.fields.first_name || '',
-      last_name: mrzResult.fields.last_name || '',
-      full_name: mrzResult.fields.full_name || '',
-      date_of_birth: mrzResult.fields.date_of_birth || '',
-      id_number: mrzResult.fields.document_number || '',
-      expiry_date: mrzResult.fields.expiry_date || '',
-      nationality: mrzResult.fields.nationality || '',
-      address: '',
-    };
-    // Tag the barcode_format as MRZ
+  // MRZ always takes priority over barcode for cross-validation fields.
+  // Polish ID back has a barcode (PESEL) but MRZ contains the actual doc number, name, DOB.
+  if (mrzResult && mrzResult.fields) {
     const mrzFormatMap: Record<string, 'MRZ_TD1' | 'MRZ_TD2' | 'MRZ_TD3'> = {
       TD1: 'MRZ_TD1', TD2: 'MRZ_TD2', TD3: 'MRZ_TD3',
     };
-    barcodeFormat = mrzFormatMap[mrzResult.format] || null;
+    finalQrPayload = {
+      first_name: mrzResult.fields.first_name || qrPayload?.first_name || '',
+      last_name: mrzResult.fields.last_name || qrPayload?.last_name || '',
+      full_name: mrzResult.fields.full_name || qrPayload?.full_name || '',
+      date_of_birth: mrzResult.fields.date_of_birth || qrPayload?.date_of_birth || '',
+      id_number: mrzResult.fields.document_number || qrPayload?.id_number || '',
+      expiry_date: mrzResult.fields.expiry_date || qrPayload?.expiry_date || '',
+      nationality: mrzResult.fields.nationality || qrPayload?.nationality || '',
+      address: qrPayload?.address || '',
+    };
+    barcodeFormat = mrzFormatMap[mrzResult.format] || barcodeFormat;
+  } else if (!qrPayload && mrzResult && mrzResult.fields) {
+    // fallback — should not reach here but kept for safety
+    finalQrPayload = null;
   }
 
   // Build MRZ result for Gate 2
@@ -1140,8 +1153,12 @@ router.post('/:verification_id/front-document',
       document_id: document.id,
     } as any);
 
-    // Resolve issuing_country: per-request override > session state
-    const resolvedCountry = issuing_country?.toUpperCase() || undefined;
+    // Resolve issuing_country: per-request override > session state > verification record
+    const savedState = await loadSessionState(verification_id);
+    const resolvedCountry = issuing_country?.toUpperCase()
+      || savedState?.issuing_country?.toUpperCase()
+      || (verification as any).issuing_country?.toUpperCase()
+      || undefined;
 
     // Look up developer's LLM config for enhanced OCR extraction
     const developerId = (req as any).developer.id;

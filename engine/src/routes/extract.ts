@@ -85,6 +85,74 @@ router.post('/front', upload.single('file'), async (req: Request, res: Response)
       imageBuffer, documentType, issuingCountry, llmConfig,
     );
 
+    // DEBUG: log raw OCR text to diagnose field extraction issues
+    logger.info('OCR raw_text (debug)', {
+      raw_text: ocrData?.raw_text?.substring(0, 500),
+      issuingCountry,
+      documentType,
+    });
+
+    // Polish ID fallback: extract fields directly from raw text using known patterns.
+    // Runs for all PL verifications — overrides extractor output if it doesn't match PL format.
+    if (issuingCountry === 'PL' && ocrData?.raw_text) {
+      const raw = ocrData.raw_text;
+
+      // Polish drivers license: extract numbered EU fields (1=surname, 2=given, 5=number)
+      if (documentType === 'drivers_license' || ocrData.detected_document_type === 'drivers_license') {
+        // Field 1: surname (first word after "1." or ".1")
+        if (!ocrData.name) {
+          const f1 = raw.match(/(?:^|\n)[.\s]*1[.\s]+([A-ZŁÓĘĄŚŹŻĆŃ][A-ZŁÓĘĄŚŹŻĆŃ\-]+)/im);
+          const f2 = raw.match(/(?:^|\n)\s*2[.\s]+([A-ZŁÓĘĄŚŹŻĆŃ][A-ZŁÓĘĄŚŹŻĆŃ\s\-]+?)(?:\s+[A-Z]{3,}|\n)/im);
+          if (f1 || f2) {
+            const surname = f1 ? f1[1].trim() : '';
+            const given = f2 ? f2[1].trim() : '';
+            ocrData.name = [given, surname].filter(Boolean).join(' ');
+            ocrData.confidence_scores = ocrData.confidence_scores || {};
+            ocrData.confidence_scores.name = 0.85;
+            logger.info('PL DL fallback: extracted name', { name: ocrData.name });
+          }
+        }
+        // Field 5: license number (digits/digits/digits format)
+        if (!ocrData.document_number) {
+          const f5 = raw.match(/(?:^|\n)\s*5[.\s]+(\d{5}\/\d{2}\/\d{4})/im);
+          if (f5) {
+            ocrData.document_number = f5[1];
+            ocrData.confidence_scores = ocrData.confidence_scores || {};
+            ocrData.confidence_scores.document_number = 0.90;
+            logger.info('PL DL fallback: extracted document_number', { document_number: f5[1] });
+          }
+        }
+      }
+
+      // Document number: must match Polish format 3 letters + 6 digits (e.g. DFF362754)
+      // Override extractor result if it doesn't match (e.g. "cardPI", "cardPL")
+      const plDocRegex = /\b([A-Z]{3}\d{6})\b/;
+      const currentDocNum = ocrData.document_number || '';
+      if (!plDocRegex.test(currentDocNum) && documentType !== 'drivers_license') {
+        const m = raw.match(plDocRegex);
+        if (m) {
+          ocrData.document_number = m[1];
+          ocrData.confidence_scores = ocrData.confidence_scores || {};
+          ocrData.confidence_scores.document_number = 0.88;
+          logger.info('PL fallback: extracted document_number', { document_number: m[1], replaced: currentDocNum });
+        }
+      }
+
+      // Full name: line after NAZWISKO/ SURNAME and IMIONA/ GIVEN NAMES
+      if (!ocrData.name) {
+        const surnameMatch = raw.match(/(?:NAZWISKO|SURNAME)[^\n]*\n([A-Z][A-Z\s\-ŁÓĘĄŚŹŻĆŃ]+)/i);
+        const givenMatch = raw.match(/(?:IMIONA|GIVEN\s*NAMES)[^\n]*\n([A-Z][A-Z\s\-ŁÓĘĄŚŹŻĆŃ]+)/i);
+        if (surnameMatch || givenMatch) {
+          const surname = surnameMatch ? surnameMatch[1].trim() : '';
+          const given = givenMatch ? givenMatch[1].trim() : '';
+          ocrData.name = [given, surname].filter(Boolean).join(' ');
+          ocrData.confidence_scores = ocrData.confidence_scores || {};
+          ocrData.confidence_scores.name = 0.88;
+          logger.info('PL fallback: extracted name', { name: ocrData.name });
+        }
+      }
+    }
+
     // Calculate average confidence
     const confidenceScores = ocrData?.confidence_scores || {};
     const values = Object.values(confidenceScores).filter((v): v is number => typeof v === 'number');
@@ -244,29 +312,40 @@ router.post('/back', upload.single('file'), async (req: Request, res: Response) 
       address: (barcodeData.parsed_data as any).address || '',
     } : null);
 
-    // 3. MRZ detection from raw OCR text
-    const rawText = barcodeData?.raw_text || '';
+    // 3. MRZ detection — always run OCR on back to catch MRZ lines
+    // (barcode scanner may find a barcode but miss the MRZ zone entirely)
+    let rawText = barcodeData?.raw_text || '';
+    try {
+      const backOcr = await ocrService.processDocumentFromBuffer(imageBuffer, 'national_id', undefined, undefined);
+      const ocrText = backOcr?.raw_text || '';
+      // Merge: prefer OCR text as it covers MRZ; append barcode text if different
+      rawText = ocrText || rawText;
+      logger.info('Back OCR for MRZ', { raw_text: rawText.substring(0, 400) });
+    } catch (err) {
+      logger.warn('Back OCR failed, using barcode text only', { error: err instanceof Error ? err.message : 'Unknown' });
+    }
     const mrzResult = extractMRZFromText(rawText);
 
     let finalQrPayload = qrPayload;
     let barcodeFormat: 'PDF417' | 'QR_CODE' | 'DATA_MATRIX' | 'CODE_128' | 'MRZ_TD1' | 'MRZ_TD2' | 'MRZ_TD3' | null =
       barcodeData?.pdf417_data ? 'PDF417' : (barcodeData?.barcode_data ? 'QR_CODE' : null);
 
-    if (!qrPayload && mrzResult && mrzResult.fields) {
-      finalQrPayload = {
-        first_name: mrzResult.fields.first_name || '',
-        last_name: mrzResult.fields.last_name || '',
-        full_name: mrzResult.fields.full_name || '',
-        date_of_birth: mrzResult.fields.date_of_birth || '',
-        id_number: mrzResult.fields.document_number || '',
-        expiry_date: mrzResult.fields.expiry_date || '',
-        nationality: mrzResult.fields.nationality || '',
-        address: '',
-      };
+    // MRZ always takes priority — Polish ID back has PESEL barcode but MRZ has doc number/name/DOB
+    if (mrzResult && mrzResult.fields) {
       const mrzFormatMap: Record<string, 'MRZ_TD1' | 'MRZ_TD2' | 'MRZ_TD3'> = {
         TD1: 'MRZ_TD1', TD2: 'MRZ_TD2', TD3: 'MRZ_TD3',
       };
-      barcodeFormat = mrzFormatMap[mrzResult.format] || null;
+      finalQrPayload = {
+        first_name: mrzResult.fields.first_name || qrPayload?.first_name || '',
+        last_name: mrzResult.fields.last_name || qrPayload?.last_name || '',
+        full_name: mrzResult.fields.full_name || qrPayload?.full_name || '',
+        date_of_birth: mrzResult.fields.date_of_birth || qrPayload?.date_of_birth || '',
+        id_number: mrzResult.fields.document_number || qrPayload?.id_number || '',
+        expiry_date: mrzResult.fields.expiry_date || qrPayload?.expiry_date || '',
+        nationality: mrzResult.fields.nationality || qrPayload?.nationality || '',
+        address: qrPayload?.address || '',
+      };
+      barcodeFormat = mrzFormatMap[mrzResult.format] || barcodeFormat;
     }
 
     const hasMrz = mrzResult !== null;
@@ -278,6 +357,18 @@ router.post('/back', upload.single('file'), async (req: Request, res: Response) 
       raw_lines: rawText.split('\n').filter((l: string) => /^[A-Z0-9<]{30,}$/.test(l.trim())),
       checksums_valid: true,
     } : null);
+
+    // Polish ID back fallback: extract doc number directly from raw OCR text
+    // The back has "SERIA I NUMER DOKUMENTU/ DOCUMENT NUMBER\nDFF 362754" pattern
+    if (finalQrPayload && (!finalQrPayload.id_number || !/^[A-Z]{3}\d{6}$/.test(finalQrPayload.id_number))) {
+      const docNumMatch = rawText.match(/(?:DOCUMENT\s*NUMBER|NUMER\s*DOKUMENTU)[^\n]*\n?\s*([A-Z]{3}\s*\d{6})/i)
+        || rawText.match(/\b([A-Z]{3}\s*\d{6})\b/);
+      if (docNumMatch) {
+        const extracted = docNumMatch[1].replace(/\s/g, '');
+        finalQrPayload.id_number = extracted;
+        logger.info('Back raw-text fallback: extracted id_number', { id_number: extracted });
+      }
+    }
 
     const result: BackExtractionResult = {
       qr_payload: finalQrPayload,

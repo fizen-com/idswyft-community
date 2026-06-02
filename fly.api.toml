@@ -1,0 +1,35 @@
+app = "idswyft-api-preprod"
+primary_region = "fra"
+
+[build]
+  dockerfile = "backend/Dockerfile"
+
+[env]
+  NODE_ENV = "production"
+  PORT = "3001"
+  STORAGE_PROVIDER = "local"
+  SANDBOX_MODE = "false"
+  RATE_LIMIT_ENABLED = "true"
+  MIGRATIONS_LENIENT = "true"
+
+[http_service]
+  internal_port = 3001
+  force_https = true
+  auto_stop_machines = "stop"
+  auto_start_machines = true
+  min_machines_running = 0
+
+  [[http_service.checks]]
+    grace_period = "40s"
+    interval = "30s"
+    method = "GET"
+    path = "/health"
+    timeout = "10s"
+
+[mounts]
+  source = "idswyft_uploads"
+  destination = "/app/backend/uploads"
+
+[[vm]]
+  size = "shared-cpu-2x"
+  memory = "1gb"

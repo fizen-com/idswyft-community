@@ -184,7 +184,8 @@ export function normalizeDate(value: unknown, dateHint?: 'DMY' | 'MDY' | 'YMD'):
  */
 export function normalizeNationality(value: unknown): string | null {
   if (value == null) return null;
-  const str = String(value).trim().toUpperCase();
+  // Extract only the first word — strips dates/noise that OCR appended (e.g. "POLSKIE 19.07.1985")
+  const str = String(value).trim().toUpperCase().split(/[\s\d]/)[0];
   if (!str) return null;
 
   // If it's already alpha-3, return as-is
@@ -192,6 +193,15 @@ export function normalizeNationality(value: unknown): string | null {
 
   // Try alpha-2 → alpha-3 mapping
   if (COUNTRY_MAP[str]) return COUNTRY_MAP[str];
+
+  // Native language nationality words → alpha-3
+  const NATIVE_MAP: Record<string, string> = {
+    POLSKIE: 'POL', POLSKA: 'POL', POLISH: 'POL',
+    GERMAN: 'DEU', DEUTSCH: 'DEU',
+    FRENCH: 'FRA', FRANCAIS: 'FRA',
+    BRITISH: 'GBR', ENGLISH: 'GBR',
+  };
+  if (NATIVE_MAP[str]) return NATIVE_MAP[str];
 
   return null;
 }

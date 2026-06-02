@@ -548,6 +548,81 @@ export const INTERNATIONAL_ID_FORMATS: Record<string, CountryIdFormat> = {
       },
     ],
   },
+
+  PL: {
+    country: 'PL',
+    document_types: [
+      {
+        type: 'national_id', // Dowód osobisty
+        // Polish national ID: 3 uppercase letters + 6 digits (e.g. ABC123456)
+        id_number_regex: /^[A-Z]{3}\d{6}$/,
+        field_labels: {
+          name: [
+            /nazwisko/i, /surname/i,
+            /imiona/i, /given\s*names/i,
+            /imi(?:ę|e)\s*i\s*nazwisko/i,
+          ],
+          date_of_birth: [
+            /data\s*urodzenia/i, /date\s*of\s*birth/i,
+            /ur\./i, /ur\b/i, /dob/i,
+          ],
+          expiry_date: [
+            /termin\s*wa[żz]no[śs]ci/i, /expiry\s*date/i,
+            /wa[żz]ny\s*do/i, /data\s*wa[żz]no[śs]ci/i,
+            /expiry/i, /valid\s*until/i,
+          ],
+          id_number: [
+            /seria\s*i\s*numer\s*dokumentu/i, /document\s*number/i,
+            /nr\s*dowodu/i, /seria\s*i\s*nr/i, /seria\s*nr/i, /nr\s*dokumentu/i,
+            /id\s*no/i,
+          ],
+          nationality: [
+            /obywatelstwo/i, /nationality/i,
+            /narodowo[śs][śc]i/i,
+          ],
+          address: [/adres/i, /miejsce\s*zamieszkania/i, /address/i],
+          issuing_authority: [
+            /organ\s*wydaj[ąa]cy/i, /wydany\s*przez/i,
+            /issuing\s*authority/i, /authority/i,
+          ],
+        },
+        date_format: 'DMY',
+        has_mrz: true, // TD1 format (3 lines × 30 chars) on the back
+      },
+      {
+        type: 'drivers_license', // Prawo jazdy (EU format — numbered fields)
+        // Polish DL number: digits/digits/digits (e.g. 02061/02/2801)
+        id_number_regex: /^\d{5}\/\d{2}\/\d{4}$/,
+        field_labels: {
+          // EU DL uses numbered fields: 1=surname, 2=given names, 3=DOB, 4b=expiry, 5=number
+          name: [/^1\./m, /nazwisko/i, /^2\./m, /imiona/i, /surname/i, /given\s*names/i],
+          date_of_birth: [/^3\./m, /data\s*urodzenia/i, /date\s*of\s*birth/i],
+          expiry_date: [/4b\./i, /termin\s*wa[żz]no[śs]ci/i, /expiry/i],
+          id_number: [/^5\./m, /nr\s*prawa\s*jazdy/i, /licence\s*no/i, /prawo\s*jazdy\s*nr/i],
+          nationality: [/obywatelstwo/i, /nationality/i],
+          address: [/^8\./m, /adres/i, /address/i],
+          issuing_authority: [/4c\./i, /organ\s*wydaj[ąa]cy/i, /authority/i, /starosta/i],
+        },
+        date_format: 'DMY',
+        has_mrz: false,
+      },
+      {
+        type: 'passport', // Paszport
+        id_number_regex: /^[A-Z]{2}\d{7}$/,
+        field_labels: {
+          name: [/nazwisko/i, /imiona/i, /surname/i, /given\s*names/i],
+          date_of_birth: [/data\s*urodzenia/i, /date\s*of\s*birth/i],
+          expiry_date: [/data\s*wa[żz]no[śs]ci/i, /date\s*of\s*expiry/i],
+          id_number: [/nr\s*paszportu/i, /passport\s*no/i],
+          nationality: [/obywatelstwo/i, /nationality/i],
+          address: [],
+          issuing_authority: [/organ\s*wydaj[ąa]cy/i, /authority/i],
+        },
+        date_format: 'DMY',
+        has_mrz: true, // TD3 format
+      },
+    ],
+  },
 };
 
 /**
@@ -598,6 +673,10 @@ export const INTERNATIONAL_HEADER_NOISE = new Set([
   'carteira nacional de habilita\u00e7\u00e3o', 'carta de condu\u00e7\u00e3o',
   // Dutch
   'identiteitskaart', 'rijbewijs',
+  // Polish
+  'dowód osobisty', 'prawo jazdy', 'paszport', 'rzeczpospolita polska',
+  'polska', 'dowod osobisty', 'identity card pl', 'identity card',
+  'republic of poland', 'rzeczpospolita',
   // Albanian
   'republika e shqip\u00ebris\u00eb', 'let\u00ebrnjoftim', 'kart\u00eb identiteti',
   // Japanese

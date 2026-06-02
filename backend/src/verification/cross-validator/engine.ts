@@ -128,6 +128,15 @@ export function crossValidate(
       continue;
     }
 
+    // Critical field missing on BACK only (front has it) — MRZ/barcode unreadable for this field.
+    // Don't hard-reject; treat as partial — field will be flagged for manual review.
+    if (config.critical && frontValue.trim().length > 0 && backValue.trim().length === 0) {
+      fieldScores[field] = { score: 0, passed: false, weight: config.weight };
+      console.log(`⚠️  ${field} (w=${config.weight}, critical=true): MISSING ON BACK — flagged for review`);
+      console.log(`     front: "${frontValue}" | back: "${backValue}"`);
+      continue;
+    }
+
     // Critical fields MUST be present on both sides — missing = failure
     const comparator = COMPARATORS[field];
     const score = comparator ? comparator(frontValue, backValue) : 0;

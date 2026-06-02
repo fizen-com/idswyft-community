@@ -197,9 +197,18 @@ if (config.storage.provider === 'local' || config.storage.provider === 's3') {
   app.get('/api/public/assets/*', servePublicAsset);
 }
 
-// Local file serving — authenticated with API key, path traversal blocked in serveLocalFile
+// Local file serving — authenticated with API key OR reviewer JWT (for admin panel)
 if (config.storage.provider === 'local') {
-  app.get('/api/files/*', authenticateAPIKey, serveLocalFile);
+  app.get('/api/files/*', (req, res, next) => {
+    // Try API key first, fall back to reviewer JWT
+    authenticateAPIKey(req, res, (err) => {
+      if (!err) return next();
+      // API key failed — try reviewer JWT
+      import('./middleware/auth.js').then(({ authenticateReviewerJWT }) => {
+        authenticateReviewerJWT(req, res, next);
+      }).catch(() => next(err));
+    });
+  }, serveLocalFile);
 }
 
 // Health check endpoint (bare /health for Railway health checks + /api/health for API consumers)

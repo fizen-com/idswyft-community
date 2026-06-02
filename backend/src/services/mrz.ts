@@ -47,9 +47,19 @@ export function detectMRZInText(rawText: string): string[] | null {
 
   for (const line of lines) {
     // MRZ lines: uppercase letters, digits, and < filler only
-    const cleaned = line.replace(/\s/g, '');
-    if (cleaned.length >= 30 && /^[A-Z0-9<]+$/.test(cleaned) && MRZ_LINE_LENGTHS.has(cleaned.length)) {
-      mrzCandidates.push(cleaned);
+    let cleaned = line.replace(/\s/g, '').toUpperCase();
+    // Normalize OCR mistake: 0→O only when flanked by letters or < on both sides
+    cleaned = cleaned.replace(/([A-Z<])0([A-Z<])/g, '$1O$2')
+                     .replace(/([A-Z<])0([A-Z<])/g, '$1O$2');
+    // Trim to nearest valid MRZ length if OCR added/removed 1-2 chars
+    if (cleaned.length >= 28 && /^[A-Z0-9<]+$/.test(cleaned)) {
+      for (const validLen of [30, 36, 44]) {
+        if (Math.abs(cleaned.length - validLen) <= 2) {
+          const trimmed = cleaned.slice(0, validLen).padEnd(validLen, '<');
+          mrzCandidates.push(trimmed);
+          break;
+        }
+      }
     }
   }
 
@@ -67,6 +77,12 @@ export function detectMRZInText(rawText: string): string[] | null {
   for (const [len, group] of byLength) {
     if (len === 30 && group.length >= 3) return group.slice(0, 3);
     if ((len === 36 || len === 44) && group.length >= 2) return group.slice(0, 2);
+  }
+
+  // Fallback: TD1 with only 2 complete lines (3rd OCR-truncated) — pad with fillers
+  const td1Lines = byLength.get(30) || [];
+  if (td1Lines.length === 2) {
+    return [...td1Lines, '<'.repeat(30)];
   }
 
   return null;
@@ -133,8 +149,9 @@ function normalizeMRZDate(dateStr: string | null): string | null {
     const yy = parseInt(dateStr.slice(0, 2));
     const mm = dateStr.slice(2, 4);
     const dd = dateStr.slice(4, 6);
-    // MRZ convention: years 00-30 → 2000s, 31-99 → 1900s
-    const century = yy <= 30 ? '20' : '19';
+    // MRZ convention: years 00-50 → 2000s, 51-99 → 1900s
+    // Extended to 50 to cover documents valid until ~2050 (e.g. Polish IDs expiring 2032+)
+    const century = yy <= 50 ? '20' : '19';
     return `${century}${dateStr.slice(0, 2)}-${mm}-${dd}`;
   }
 

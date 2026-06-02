@@ -18,23 +18,44 @@ export class NationalIdExtractor extends BaseExtractor {
       return new DriversLicenseExtractor().extract(lines, ocrData);
     }
 
-    this.findField(flatLines, [/full\s*name/i, /\bname\b/i], (value, conf) => {
+    this.findField(flatLines, [
+      /full\s*name/i, /\bname\b/i,
+      // Polish national ID labels
+      /nazwisko/i, /imi(?:ę|e)\s*i\s*nazwisko/i, /imiona/i,
+    ], (value, conf) => {
       if (!isHeaderNoise(value)) {
         ocrData.name = value;
         ocrData.confidence_scores!.name = conf;
       }
     });
-    this.findDateField(flatLines, [/dob/i, /date\s*of\s*birth/i, /born/i], (value, conf) => {
+    this.findDateField(flatLines, [/dob/i, /date\s*of\s*birth/i, /born/i, /data\s*urodzenia/i, /ur\./i], (value, conf) => {
       ocrData.date_of_birth = value;
       ocrData.confidence_scores!.date_of_birth = conf;
     });
-    this.findField(flatLines, [/id\s*no/i, /national\s*id/i, /identity/i, /\bdln?\b/i], (value, conf) => {
+    this.findField(flatLines, [
+      /id\s*no/i, /national\s*id/i, /identity/i, /\bdln?\b/i,
+      // Polish national ID labels
+      /nr\s*dowodu/i, /seria\s*i\s*nr/i, /seria\s*nr/i, /nr\s*dokumentu/i,
+    ], (value, conf) => {
       const cleaned = value.replace(/\s+/g, '');
       if (/^[A-Z0-9\-]{6,20}$/i.test(cleaned)) {
         ocrData.document_number = cleaned;
         ocrData.confidence_scores!.document_number = conf;
       }
     });
+
+    // Polish national ID: document number format is 3 letters + 6 digits (e.g. ABC123456)
+    // Try to detect it from raw text even without a label
+    if (!ocrData.document_number) {
+      for (const line of flatLines) {
+        const m = line.text.match(/\b([A-Z]{3}\d{6})\b/);
+        if (m) {
+          ocrData.document_number = m[1];
+          ocrData.confidence_scores!.document_number = line.confidence * 0.85;
+          break;
+        }
+      }
+    }
     this.findDateField(flatLines, [/expiry/i, /expires/i, /valid\s*until/i, /\bexp\b/i], (value, conf) => {
       ocrData.expiration_date = disambiguateExpiryDate(value);
       ocrData.confidence_scores!.expiration_date = conf;

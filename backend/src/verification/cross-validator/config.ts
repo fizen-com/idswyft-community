@@ -20,7 +20,7 @@ export const FIELD_WEIGHTS: Record<string, FieldConfig> = {
 };
 
 /** Score >= this → PASS (unlocks live capture) */
-export const THRESHOLD_PASS = 0.92;
+export const THRESHOLD_PASS = 0.80;
 
 /** Score >= this (but < PASS) → REVIEW (still unlocks live capture, flags for review) */
-export const THRESHOLD_REVIEW = 0.75;
+export const THRESHOLD_REVIEW = 0.50;

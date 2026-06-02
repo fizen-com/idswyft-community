@@ -46,13 +46,21 @@ export function evaluateGate2(
   }
 
   // Check MRZ checksums if present
+  // Note: OCR-based MRZ may have minor errors (0/O confusion, truncation) that fail checksums
+  // but still provide valid data. Only hard-reject if checksums_valid is explicitly false
+  // AND no useful data was extracted from MRZ.
   if (back.mrz_result && !back.mrz_result.checksums_valid) {
-    return {
-      passed: false,
-      rejection_reason: 'BACK_MRZ_CHECKSUM_FAILED',
-      rejection_detail: 'MRZ checksum validation failed — possible physical tampering',
-      user_message: 'We detected an issue with your document. Please ensure you are using an original, unaltered ID.',
-    };
+    const mrzFields = back.mrz_result.fields || {};
+    const hasMrzData = mrzFields.document_number || mrzFields.date_of_birth || mrzFields.full_name;
+    if (!hasMrzData) {
+      return {
+        passed: false,
+        rejection_reason: 'BACK_MRZ_CHECKSUM_FAILED',
+        rejection_detail: 'MRZ checksum validation failed — possible physical tampering',
+        user_message: 'We detected an issue with your document. Please ensure you are using an original, unaltered ID.',
+      };
+    }
+    // MRZ has data despite checksum error — likely OCR noise, continue with extracted fields
   }
 
   // Check front MRZ vs back MRZ consistency

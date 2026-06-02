@@ -125,7 +125,9 @@ export class VerificationConsistencyService {
     }
 
     // Check 1: Status consistency with available data
-    if (verification.status === 'verified' && !verification.live_capture_completed) {
+    // document_only mode does not require live capture — skip this check
+    const isDocumentOnly = verification.verification_mode === 'document_only';
+    if (verification.status === 'verified' && !verification.live_capture_completed && !isDocumentOnly) {
       issues.push('Status is verified but live capture not completed');
       recommendations.push('Complete live capture before marking as verified');
     }
