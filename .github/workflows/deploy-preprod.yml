@@ -1,14 +1,16 @@
 name: Deploy to Preprod (Fly.io)
 
 on:
-  push:
-    branches:
-      - main
+  workflow_run:
+    workflows: ["CI"]
+    branches: [main]
+    types: [completed]
 
 jobs:
   deploy-engine:
     name: Deploy Engine
     runs-on: ubuntu-latest
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
     steps:
       - uses: actions/checkout@v4
       - uses: superfly/flyctl-actions/setup-flyctl@master
