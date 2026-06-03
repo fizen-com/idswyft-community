@@ -330,6 +330,24 @@ router.post('/back', upload.single('file'), async (req: Request, res: Response) 
     let barcodeFormat: 'PDF417' | 'QR_CODE' | 'DATA_MATRIX' | 'CODE_128' | 'MRZ_TD1' | 'MRZ_TD2' | 'MRZ_TD3' | null =
       barcodeData?.pdf417_data ? 'PDF417' : (barcodeData?.barcode_data ? 'QR_CODE' : null);
 
+    // Extract PESEL from raw OCR text (Polish national ID back — field 4d)
+    // PESEL is 11 digits, starting with YYMMDD (date of birth encoded)
+    // It appears as "4d.XXXXXXXXXXX" or "NUMER PESEL/ PERSONAL NUMBER\nXXXXXXXXXXX"
+    let pesel: string | null = null;
+    const peselMatch = rawText.match(/(?:4d[.\s]+|NUMER\s*PESEL[^\n]*\n\s*)(\d{11})\b/i)
+      || rawText.match(/\b(\d{11})\b/);  // fallback: any 11-digit number
+    if (peselMatch) {
+      const candidate = peselMatch[1];
+      // Validate PESEL checksum
+      const weights = [1, 3, 7, 9, 1, 3, 7, 9, 1, 3];
+      const checksum = weights.reduce((sum, w, i) => sum + w * parseInt(candidate[i]), 0) % 10;
+      const controlDigit = (10 - checksum) % 10;
+      if (controlDigit === parseInt(candidate[10])) {
+        pesel = candidate;
+        logger.info('PESEL extracted and validated', { pesel: pesel.substring(0, 6) + '*****' });
+      }
+    }
+
     // MRZ always takes priority — Polish ID back has PESEL barcode but MRZ has doc number/name/DOB
     if (mrzResult && mrzResult.fields) {
       const mrzFormatMap: Record<string, 'MRZ_TD1' | 'MRZ_TD2' | 'MRZ_TD3'> = {
@@ -344,8 +362,11 @@ router.post('/back', upload.single('file'), async (req: Request, res: Response) 
         expiry_date: mrzResult.fields.expiry_date || qrPayload?.expiry_date || '',
         nationality: mrzResult.fields.nationality || qrPayload?.nationality || '',
         address: qrPayload?.address || '',
+        ...(pesel && { pesel }),
       };
       barcodeFormat = mrzFormatMap[mrzResult.format] || barcodeFormat;
+    } else if (finalQrPayload && pesel) {
+      (finalQrPayload as any).pesel = pesel;
     }
 
     const hasMrz = mrzResult !== null;

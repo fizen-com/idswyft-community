@@ -104,6 +104,8 @@ const QRPayloadSchema = z.object({
   id_number: z.string().optional(),
   expiry_date: z.string().optional(),
   nationality: z.string().optional(),
+  pesel: z.string().optional(),        // Polish national ID number (11 digits, AML art. 36)
+  address: z.string().optional(),
 }).passthrough(); // Allow additional barcode fields
 
 // --- MRZ Parse Result ---
