@@ -3,7 +3,7 @@ name: Deploy to Preprod (Fly.io)
 on:
   push:
     branches:
-      - preprod
+      - main
 
 jobs:
   deploy-engine:
