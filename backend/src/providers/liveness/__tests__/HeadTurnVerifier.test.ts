@@ -210,7 +210,7 @@ describe('HeadTurnVerifier', () => {
         makeFaceDetection({ yaw: 0 }),  // turn1_return
         makeFaceDetection({ yaw: 0 }),  // turn_start
         makeFaceDetection({ yaw: 20 }), // turn_peak (left = positive)
-        makeFaceDetection({ yaw: 15 }), // turn_return — still turned (15° from start > 8° tolerance)
+        makeFaceDetection({ yaw: 18 }), // turn_return — still turned (18° from start > 15° tolerance)
       ];
 
       const faceService = createMockFaceService(detections);
