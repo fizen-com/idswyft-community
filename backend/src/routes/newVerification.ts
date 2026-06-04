@@ -2374,6 +2374,123 @@ router.get('/:verification_id/status',
   })
 );
 
+// ─── Compliance media retrieval ─────────────────────────────────────────────
+// API-key (or handoff) authenticated, developer-scoped access to the stored
+// media for a verification: front/back ID images and the live-capture image.
+// Intended for an integrator's compliance/MLRO system to archive evidence.
+//
+// NOTE: liveness is persisted as a single still live-capture image plus a
+// score — no video recording is stored. Pull media promptly: files are removed
+// by retention (DATA_RETENTION_DAYS) and immediately on HARD_REJECT.
+router.get('/:verification_id/media',
+  authenticateAPIKeyOrHandoff,
+  [param('verification_id').isUUID().withMessage('Invalid verification ID')],
+  validate,
+  catchAsync(async (req: Request, res: Response) => {
+    const { verification_id } = req.params;
+    const verification = await requireOwnedVerification(req, verification_id);
+
+    const { data: docs } = await supabase
+      .from('documents')
+      .select('id, file_name, file_path, created_at')
+      .eq('verification_request_id', verification_id)
+      .order('created_at', { ascending: true });
+
+    const { data: selfie } = await supabase
+      .from('selfies')
+      .select('id, file_name, file_path, created_at')
+      .eq('verification_request_id', verification_id)
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    const base = `${req.protocol}://${req.get('host')}/api/v2/verify/${verification_id}/media`;
+    // Front/back are distinguished by upload order (front first); is_back_of_id
+    // is not consistently set, so order is the reliable signal.
+    const present = (docs || []).filter((d: any) => d.file_path);
+    const artifacts: Array<Record<string, unknown>> = [];
+    if (present[0]) artifacts.push({ type: 'front', file_name: present[0].file_name, download_url: `${base}/front` });
+    if (present[1]) artifacts.push({ type: 'back', file_name: present[1].file_name, download_url: `${base}/back` });
+    if (selfie?.file_path) artifacts.push({ type: 'live_capture', file_name: selfie.file_name, download_url: `${base}/live-capture` });
+
+    const isSandbox = (verification as any).is_sandbox || false;
+    const session = await hydrateSession(verification_id, isSandbox);
+    const lv = session.getState().liveness as any;
+
+    res.json({
+      success: true,
+      verification_id,
+      artifacts,
+      liveness: lv ? {
+        passed: lv.passed ?? null,
+        score: lv.score ?? lv.overall_score ?? null,
+        type: lv.type ?? lv.challenge ?? null,
+      } : null,
+      note: 'Liveness is captured as a still live-capture image; video recording is not currently stored.',
+    });
+  })
+);
+
+router.get('/:verification_id/media/:artifact',
+  authenticateAPIKeyOrHandoff,
+  [
+    param('verification_id').isUUID().withMessage('Invalid verification ID'),
+    param('artifact').isIn(['front', 'back', 'live-capture']).withMessage('artifact must be front, back, or live-capture'),
+  ],
+  validate,
+  catchAsync(async (req: Request, res: Response) => {
+    const { verification_id, artifact } = req.params;
+    await requireOwnedVerification(req, verification_id);
+
+    let filePath: string | null | undefined;
+    let fileName: string | null | undefined;
+
+    if (artifact === 'live-capture') {
+      const { data: selfie } = await supabase
+        .from('selfies')
+        .select('file_path, file_name')
+        .eq('verification_request_id', verification_id)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      filePath = selfie?.file_path; fileName = selfie?.file_name;
+    } else {
+      const { data: docs } = await supabase
+        .from('documents')
+        .select('file_path, file_name, created_at')
+        .eq('verification_request_id', verification_id)
+        .order('created_at', { ascending: true });
+      const present = (docs || []).filter((d: any) => d.file_path);
+      const idx = artifact === 'front' ? 0 : 1;
+      filePath = present[idx]?.file_path; fileName = present[idx]?.file_name;
+    }
+
+    if (!filePath) {
+      return res.status(404).json({ success: false, error: `No ${artifact} media available for this verification` });
+    }
+
+    let buffer: Buffer;
+    try {
+      buffer = await storageService.downloadFile(filePath);
+    } catch (err) {
+      logger.warn('Compliance media download failed', {
+        verification_id, artifact,
+        error: err instanceof Error ? err.message : String(err),
+      });
+      return res.status(404).json({ success: false, error: 'Media file is no longer available (may have been removed by retention)' });
+    }
+
+    const ext = (fileName || filePath).split('.').pop()?.toLowerCase();
+    const contentType = ext === 'png' ? 'image/png'
+      : ext === 'webp' ? 'image/webp'
+      : ext === 'pdf' ? 'application/pdf'
+      : 'image/jpeg';
+    res.setHeader('Content-Type', contentType);
+    res.setHeader('Content-Disposition', `inline; filename="${(fileName || artifact).replace(/[^\w.\-]/g, '_')}"`);
+    res.send(buffer);
+  })
+);
+
 // ─── Phone OTP (optional verification step) ─────────────────────────────────
 
 /**
