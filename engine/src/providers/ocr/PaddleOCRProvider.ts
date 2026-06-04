@@ -1717,6 +1717,10 @@ export class PaddleOCRProvider implements OCRProvider {
     this.findField(flatLines, labels.nationality, (value, conf) => {
       let cleaned = value.replace(/^\*+\s*/, '').replace(/\s*\*+$/, '').trim();
       cleaned = cleaned.replace(/\s+\d{5,}$/, '').trim();
+      // Polish ID puts NATIONALITY and DATE OF BIRTH on the same line, so the
+      // value arrives glued as e.g. "POLSKIE 19.07.1985". Strip a trailing date
+      // (dd.mm.yyyy / dd/mm/yyyy / dd-mm-yyyy) so only the nationality remains.
+      cleaned = cleaned.replace(/[\s,;]+\d{1,2}[.\/-]\d{1,2}[.\/-]\d{2,4}\.?\s*$/, '').trim();
       // Strip leading compound labels like "Nom/ Siyati " from bilingual docs
       cleaned = this.stripLeadingLabelNoise(cleaned);
       const slashParts = cleaned.split('/').map(s => s.trim())

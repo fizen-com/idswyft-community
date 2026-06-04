@@ -2243,12 +2243,13 @@ router.post('/:verification_id/restart',
       });
     }
 
-    // Enforce max 3 retries
+    // Enforce max retries (generous — a poor scan shouldn't dead-end the session)
+    const MAX_RETRIES = 10;
     const currentRetryCount = (verification as any).retry_count ?? 0;
-    if (currentRetryCount >= 3) {
+    if (currentRetryCount >= MAX_RETRIES) {
       return res.status(400).json({
         success: false,
-        message: 'Maximum retry attempts reached (3)',
+        message: `Maximum retry attempts reached (${MAX_RETRIES})`,
         retry_count: currentRetryCount,
       });
     }

@@ -206,7 +206,7 @@ export function buildVerificationResponse(input: VerificationResponseInput) {
       || ((state.velocity_analysis?.flags?.length ?? 0) > 0 ? `Velocity flags: ${state.velocity_analysis!.flags.join(', ')}` : null)
       || ((state.geo_analysis?.flags?.length ?? 0) > 0 ? `Geo flags: ${state.geo_analysis!.flags.join(', ')}` : null),
     ...(mapped.final_result === 'failed' && {
-      retry_available: (verification.retry_count ?? 0) < 3,
+      retry_available: (verification.retry_count ?? 0) < 10,
       retry_count: verification.retry_count ?? 0,
     }),
     created_at: state.created_at,

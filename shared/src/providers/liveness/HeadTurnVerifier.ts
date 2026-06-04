@@ -29,7 +29,7 @@ const WEIGHTS = {
 } as const;
 
 const PASS_THRESHOLD = 0.60;
-const MIN_YAW_DELTA = 8;         // degrees — lowered from 12 for mobile UX
+const MIN_YAW_DELTA = 5;         // degrees — lowered from 8: 2D-landmark yaw under-reads real head rotation, 8° borderline-failed real faces
 const RETURN_YAW_TOLERANCE = 15; // degrees — raised from 8, mobile cameras less precise
 const MIN_FACE_CONFIDENCE = 0.3;
 const MIN_CHALLENGE_DURATION = 8000;   // 8s minimum for full challenge

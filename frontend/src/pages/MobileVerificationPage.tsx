@@ -419,11 +419,58 @@ const MobileVerificationPage: React.FC = () => {
   const [brandingLogo, setBrandingLogo] = useState<string | null>(null);
   const [brandingCompany, setBrandingCompany] = useState<string | null>(null);
   const [brandingAccent, setBrandingAccent] = useState<string | null>(null);
+  // Page Builder config (theme, colors, font, step labels, completion copy) —
+  // resolved from the developer record and delivered via the handoff session.
+  const [pageConfig, setPageConfig] = useState<any>(null);
 
   const mountedRef = useRef(true);
   const redirectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const screen: Screen = SCREENS[screenIdx];
+
+  // ── Page Builder: apply theme + CSS variable overrides ──────────────────
+  const pbTheme: 'light' | 'dark' = pageConfig?.theme === 'light' ? 'light' : 'dark';
+  useEffect(() => {
+    if (!pageConfig) return;
+    const prev = document.documentElement.getAttribute('data-theme');
+    document.documentElement.setAttribute('data-theme', pbTheme);
+    return () => { if (prev) document.documentElement.setAttribute('data-theme', prev); };
+  }, [pageConfig, pbTheme]);
+
+  const PB_FONT_STACK: Record<string, string> = {
+    'dm-sans': "'DM Sans', system-ui, sans-serif",
+    'inter': "'Inter', system-ui, sans-serif",
+    'geist': "'Geist', system-ui, sans-serif",
+    'space-grotesk': "'Space Grotesk', system-ui, sans-serif",
+    'manrope': "'Manrope', system-ui, sans-serif",
+    'ibm-plex-mono': "'IBM Plex Mono', ui-monospace, monospace",
+  };
+  const isHex = (s: unknown): s is string => typeof s === 'string' && /^#[0-9a-fA-F]{6}$/.test(s);
+  // Theme/var overrides scoped to the active data-theme so they beat index.css.
+  const pbThemeCss = (() => {
+    const decls: string[] = [];
+    if (isHex(pageConfig?.backgroundColor)) decls.push(`--paper: ${pageConfig.backgroundColor};`);
+    if (isHex(pageConfig?.cardBackgroundColor)) decls.push(`--panel: ${pageConfig.cardBackgroundColor};`);
+    if (isHex(pageConfig?.textColor)) decls.push(`--ink: ${pageConfig.textColor};`);
+    const accent = isHex(pageConfig?.accentColor) ? pageConfig.accentColor : (isHex(brandingAccent) ? brandingAccent : null);
+    if (accent) { decls.push(`--accent: ${accent};`); decls.push(`--accent-ink: ${accent};`); }
+    const fam = pageConfig?.fontFamily && PB_FONT_STACK[pageConfig.fontFamily];
+    if (fam) decls.push(`--sans: ${fam};`);
+    if (!decls.length) return '';
+    return `html[data-theme="${pbTheme}"] { ${decls.join(' ')} }`;
+  })();
+
+  // Map the default English stepper labels to the developer's configured labels.
+  const localizeStepLabels = (labels: string[]): string[] => {
+    const s = pageConfig?.steps;
+    if (!s) return labels;
+    const map: Record<string, unknown> = {
+      'Front ID': s.front?.label,
+      'Back ID': s.back?.label,
+      'Live Photo': s.liveness?.label,
+    };
+    return labels.map((l) => (typeof map[l] === 'string' && map[l] ? (map[l] as string) : l));
+  };
 
   // ── Cleanup + camera support check ──────────────────────────────────────
   useEffect(() => {
@@ -462,6 +509,7 @@ const MobileVerificationPage: React.FC = () => {
           setBrandingCompany(data.branding.company_name);
           setBrandingAccent(data.branding.accent_color);
         }
+        if (data.page_builder_config) setPageConfig(data.page_builder_config);
         // If the handoff session carries an existing verification_id (session-token
         // flow), reuse it instead of creating a duplicate via initialize.
         if (data.verification_id) {
@@ -1113,7 +1161,7 @@ const MobileVerificationPage: React.FC = () => {
   if (loading) {
     return (
       <div style={shellStyle}>
-        <style>{css}{brandingAccent && /^#[0-9a-fA-F]{6}$/.test(brandingAccent) ? `:root { --accent: ${brandingAccent}; --accent-ink: ${brandingAccent}; }` : ''}</style>
+        <style>{css}{pbThemeCss}</style>
         <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 16 }}>
           <div style={{
             width: 56, height: 56, border: '2px solid var(--rule)',
@@ -1156,7 +1204,7 @@ const MobileVerificationPage: React.FC = () => {
   // ─── Verification flow ────────────────────────────────────────────────
   return (
     <div style={shellStyle}>
-      <style>{css}{brandingAccent && /^#[0-9a-fA-F]{6}$/.test(brandingAccent) ? `:root { --accent: ${brandingAccent}; --accent-ink: ${brandingAccent}; }` : ''}</style>
+      <style>{css}{pbThemeCss}</style>
 
       {/* Branding logo header */}
       {brandingLogo && (
@@ -1196,15 +1244,31 @@ const MobileVerificationPage: React.FC = () => {
           : isDocumentOnly ? (screenIdx >= 4 ? 3 : screenIdx)
           : screenIdx
         }
-        labels={
+        labels={localizeStepLabels(
           isAgeOnly ? AGE_ONLY_STEP_LABELS
           : (isIdentity || skipBack)
             ? (isDocumentOnly ? PASSPORT_DOC_ONLY_STEP_LABELS : IDENTITY_STEP_LABELS)
           : isDocumentOnly ? DOCUMENT_ONLY_STEP_LABELS
           : screen === 'voice' || (screen === 'done' && screenIdx === SCREEN_IDX.done && voiceHasRecording) ? FULL_VOICE_STEP_LABELS
           : FULL_STEP_LABELS
-        }
+        )}
       />
+
+      {/* Page Builder header (developer-configured title/subtitle) */}
+      {screen !== 'done' && (pageConfig?.headerTitle || pageConfig?.headerSubtitle) && (
+        <div style={{ padding: '18px 24px 0', textAlign: 'center' }}>
+          {pageConfig?.headerTitle && (
+            <h2 style={{ fontFamily: 'var(--sans)', fontSize: 20, fontWeight: 700, color: 'var(--ink)', margin: '0 0 4px', letterSpacing: '-0.01em' }}>
+              {pageConfig.headerTitle}
+            </h2>
+          )}
+          {pageConfig?.headerSubtitle && (
+            <p style={{ fontFamily: 'var(--sans)', fontSize: 13, color: 'var(--mid)', margin: 0, lineHeight: 1.5 }}>
+              {pageConfig.headerSubtitle}
+            </p>
+          )}
+        </div>
+      )}
 
       {/* Screen content */}
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', marginTop: 20 }}>
@@ -1626,12 +1690,14 @@ const MobileVerificationPage: React.FC = () => {
                     }}>{isAgeOnly ? 'Age verified' : isDocumentOnly ? 'Document verified' : 'Verification complete'}</span>
 
                     <h1 style={{ fontSize: 28, fontWeight: 700, letterSpacing: '-0.025em', marginBottom: 8 }}>
-                      You're all set
+                      {pageConfig?.completionTitle || "You're all set"}
                     </h1>
 
                     <p style={{ fontSize: 13, color: 'var(--mid)', lineHeight: 1.55, marginBottom: 24 }}>
                       {redirectUrl
                         ? 'Verification complete. Redirecting you back…'
+                        : pageConfig?.completionMessage
+                        ? pageConfig.completionMessage
                         : isAgeOnly
                         ? 'Your age has been verified. You can close this tab and return to your desktop.'
                         : isDocumentOnly
@@ -1701,7 +1767,7 @@ const MobileVerificationPage: React.FC = () => {
                       : 'Your verification is being reviewed. You will be notified of the result.'}
                   </p>
 
-                  {isFailed && finalResult.retry_available === true && (
+                  {isFailed && finalResult.retry_available !== false && (
                     <div style={{ marginTop: 16, width: '100%', maxWidth: 320 }}>
                       <PrimaryBtn onClick={handleRetry} disabled={retryProcessing}>
                         {retryProcessing ? 'Restarting…' : 'Try Again'}
