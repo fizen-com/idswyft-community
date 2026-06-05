@@ -29,7 +29,7 @@ const WEIGHTS = {
 } as const;
 
 const PASS_THRESHOLD = 0.60;
-const MIN_YAW_DELTA = 5;         // degrees — lowered from 8: 2D-landmark yaw under-reads real head rotation, 8° borderline-failed real faces
+const MIN_YAW_DELTA = 3;         // degrees — lowered 8→5→3: 2D-landmark yaw on a single peak frame severely under-reads real head rotation (a 20° physical turn often reads <5°); real faces were stuck failing head_turn_detected+correct_direction (0.45 weight) → 0.55 score < 0.60. Static spoofs still read ~0° and fail temporal/return/bbox/virtual-camera checks.
 const RETURN_YAW_TOLERANCE = 15; // degrees — raised from 8, mobile cameras less precise
 const MIN_FACE_CONFIDENCE = 0.3;
 const MIN_CHALLENGE_DURATION = 8000;   // 8s minimum for full challenge
