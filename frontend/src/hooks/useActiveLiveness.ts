@@ -49,6 +49,10 @@ export interface UseActiveLivenessReturn {
   direction: ChallengeDirection;
   instruction: string;
   progress: number;
+  /** Seconds remaining in the current hold phase (turn / return_center), else 0. */
+  countdown: number;
+  /** Which scored turn we're on (1 or 2) — for "Obrót X z 2" labelling. */
+  turnNumber: number;
   faceDetected: boolean;
   currentYaw: number;
   error: string | null;
@@ -71,12 +75,12 @@ function pickRandomDirection(): ChallengeDirection {
 
 function getInstructionForPhase(phase: LivenessPhase, direction: ChallengeDirection): string {
   switch (phase) {
-    case 'ready': return 'Umieść twarz w owalu';
-    case 'turn': return direction === 'left' ? 'Powoli obróć głowę w lewo' : 'Powoli obróć głowę w prawo';
-    case 'return_center': return 'Teraz patrz prosto przed siebie';
+    case 'ready': return 'Umieść twarz w owalu i nie ruszaj się';
+    case 'turn': return direction === 'left' ? 'Obróć głowę w LEWO i przytrzymaj' : 'Obróć głowę w PRAWO i przytrzymaj';
+    case 'return_center': return 'Wróć — patrz prosto w kamerę';
     case 'capturing': return 'Nie ruszaj się — zapisuję…';
-    case 'completed': return 'Test żywotności zaliczony!';
-    case 'failed': return 'Test żywotności nieudany. Dotknij, aby ponowić.';
+    case 'completed': return 'Gotowe — twarz potwierdzona!';
+    case 'failed': return 'Nie udało się. Dotknij, aby spróbować ponownie.';
     case 'fallback': return 'Kamera niedostępna. Używam standardowego trybu.';
     default: return '';
   }
@@ -119,6 +123,8 @@ export function useActiveLiveness(options: UseActiveLivenessOptions): UseActiveL
   const [phase, setPhase] = useState<LivenessPhase>('ready');
   const [direction, setDirection] = useState<ChallengeDirection>(pickRandomDirection);
   const [progress, setProgress] = useState(0);
+  const [countdown, setCountdown] = useState(0);
+  const [turnNumber, setTurnNumber] = useState(1);
   const [error, setError] = useState<string | null>(null);
 
   const phaseRef = useRef(phase);
@@ -133,6 +139,21 @@ export function useActiveLiveness(options: UseActiveLivenessOptions): UseActiveL
 
   // Keep phaseRef in sync
   useEffect(() => { phaseRef.current = phase; }, [phase]);
+
+  // ── Countdown ticker for the hold phases (display only — independent of the
+  //    capture timers). Re-arms on every entry into 'turn'/'return_center'. ──
+  useEffect(() => {
+    if (phase !== 'turn' && phase !== 'return_center') {
+      setCountdown(0);
+      return;
+    }
+    const holdMs = phase === 'turn' ? TURN_HOLD_MS : RETURN_HOLD_MS;
+    setCountdown(Math.ceil(holdMs / 1000));
+    const id = setInterval(() => {
+      setCountdown((c) => Math.max(0, c - 1));
+    }, 1000);
+    return () => clearInterval(id);
+  }, [phase, turnNumber]);
 
   // ── Virtual camera detection on mount ──
   useEffect(() => {
@@ -157,6 +178,7 @@ export function useActiveLiveness(options: UseActiveLivenessOptions): UseActiveL
     const startChallenge = () => {
       framesRef.current = [];
       turnCountRef.current = 0;
+      setTurnNumber(1);
       const firstDir = pickRandomDirection();
       scoredDirectionRef.current = firstDir === 'left' ? 'right' : 'left';
       setDirection(firstDir);
@@ -250,6 +272,7 @@ export function useActiveLiveness(options: UseActiveLivenessOptions): UseActiveL
           phase: 'turn_start',
         });
         turnCountRef.current = 1;
+        setTurnNumber(2);
         setDirection(scoredDirectionRef.current);
         // Brief pause before second turn instruction
         turnDelayRef.current = setTimeout(() => {
@@ -326,6 +349,8 @@ export function useActiveLiveness(options: UseActiveLivenessOptions): UseActiveL
     setDirection(pickRandomDirection());
     setError(null);
     setProgress(0);
+    setCountdown(0);
+    setTurnNumber(1);
     setPhase('ready');
   }, []);
 
@@ -342,6 +367,8 @@ export function useActiveLiveness(options: UseActiveLivenessOptions): UseActiveL
     direction,
     instruction: getInstructionForPhase(phase, direction),
     progress,
+    countdown,
+    turnNumber,
     faceDetected: true,  // No client-side detection — always true when camera is active
     currentYaw: 0,       // No client-side yaw estimation
     error,

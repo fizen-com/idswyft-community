@@ -194,6 +194,8 @@ export function ActiveLivenessCapture({
     direction,
     instruction,
     progress,
+    countdown,
+    turnNumber,
     error,
     retry,
   } = useActiveLiveness({
@@ -204,17 +206,42 @@ export function ActiveLivenessCapture({
     onFallback,
   });
 
+  // ── Haptic feedback on phase transitions (where supported) ──
+  useEffect(() => {
+    const vib = typeof navigator !== 'undefined' && navigator.vibrate
+      ? navigator.vibrate.bind(navigator) : null;
+    if (!vib) return;
+    if (phase === 'turn') vib(45);              // cue: start turning
+    else if (phase === 'return_center') vib(45); // cue: return to center
+    else if (phase === 'completed') vib([30, 50, 30]);
+    else if (phase === 'failed') vib(140);
+  }, [phase, turnNumber]);
+
   // ── Pre-camera intro screen — gates getUserMedia behind an explicit user gesture ──
   if (!cameraRequested) {
     return (
       <div style={FRAME_STYLE}>
         <style>{LIVENESS_CSS}</style>
         <div className="lv-intro">
-          <h2 className="lv-intro-title">Wymagany dostęp do kamery</h2>
+          <h2 className="lv-intro-title">Sprawdzenie żywotności</h2>
+
+          {/* Demo: animated head turning left ↔ right */}
+          <div className="lv-demo" aria-hidden="true">
+            <svg className="lv-demo-head" width="96" height="96" viewBox="0 0 96 96" fill="none">
+              <ellipse cx="48" cy="48" rx="30" ry="36" fill="none" stroke="var(--accent)" strokeWidth="2.5" />
+              <circle className="lv-demo-eye" cx="38" cy="42" r="3.2" fill="var(--accent)" />
+              <circle className="lv-demo-eye" cx="58" cy="42" r="3.2" fill="var(--accent)" />
+              <path className="lv-demo-nose" d="M48 48 L44 58 L52 58 Z" fill="var(--accent)" opacity="0.7" />
+            </svg>
+            <div className="lv-demo-arrows">
+              <span>◀</span><span>▶</span>
+            </div>
+          </div>
+
           <p className="lv-intro-body">
-            Użyjemy przedniej kamery do szybkiego sprawdzenia żywotności, aby
-            potwierdzić, że to naprawdę Ty. Obraz jest przetwarzany na potrzeby
-            sprawdzenia i nie jest zapisywany jako nagranie.
+            Obróć powoli głowę w bok i wróć do środka, gdy pojawi się prośba.
+            Użyjemy przedniej kamery, by potwierdzić, że to naprawdę Ty — obraz nie
+            jest zapisywany jako nagranie.
           </p>
           <button onClick={requestCamera} className="lv-btn-primary">
             Włącz kamerę
@@ -365,18 +392,19 @@ export function ActiveLivenessCapture({
           <div className={`lv-scan ${challengeActive ? 'lv-scan--fast' : ''}`} />
         )}
 
-        {/* Direction arrow for head turn */}
+        {/* Direction arrow for head turn — large, animated toward the turn side */}
         {phase === 'turn' && (
           <div style={{
             position: 'absolute',
             top: '42%',
-            left: direction === 'right' ? 'auto' : 16,
-            right: direction === 'right' ? 16 : 'auto',
+            left: direction === 'right' ? 'auto' : 8,
+            right: direction === 'right' ? 8 : 'auto',
             transform: 'translateY(-50%)',
             zIndex: 5,
+            display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4,
           }}>
-            <div className="lv-arrow-pulse">
-              <svg width="52" height="52" viewBox="0 0 24 24" fill="none">
+            <div className={`lv-arrow lv-arrow--${direction}`}>
+              <svg width="76" height="76" viewBox="0 0 24 24" fill="none">
                 <path
                   d={direction === 'right'
                     ? 'M5 12h14m0 0l-6-6m6 6l-6 6'
@@ -388,26 +416,28 @@ export function ActiveLivenessCapture({
                 />
               </svg>
             </div>
+            <span className="lv-arrow-label">{direction === 'left' ? 'LEWO' : 'PRAWO'}</span>
           </div>
         )}
 
-        {/* Progress ring (top-right) */}
+        {/* Progress ring (top-right) with hold countdown in the centre */}
         {challengeActive && (
-          <div style={{ position: 'absolute', top: 12, right: 12, zIndex: 5 }}>
-            <svg width="44" height="44" viewBox="0 0 44 44">
-              <circle cx="22" cy="22" r="18" fill="none" stroke="rgba(0,212,180,0.12)" strokeWidth={3} />
+          <div style={{ position: 'absolute', top: 12, right: 12, zIndex: 5, width: 56, height: 56 }}>
+            <svg width="56" height="56" viewBox="0 0 56 56" style={{ position: 'absolute', inset: 0 }}>
+              <circle cx="28" cy="28" r="24" fill="rgba(4,13,26,0.45)" stroke="rgba(0,212,180,0.12)" strokeWidth={3} />
               <circle
-                cx="22" cy="22" r="18"
+                cx="28" cy="28" r="24"
                 fill="none"
                 stroke={progress > 0.75 ? '#ffb547' : '#00d4b4'}
                 strokeWidth={3}
                 strokeLinecap="round"
-                strokeDasharray={`${2 * Math.PI * 18}`}
-                strokeDashoffset={`${2 * Math.PI * 18 * (1 - Math.max(0, Math.min(1, progress)))}`}
-                transform="rotate(-90 22 22)"
+                strokeDasharray={`${2 * Math.PI * 24}`}
+                strokeDashoffset={`${2 * Math.PI * 24 * (1 - Math.max(0, Math.min(1, progress)))}`}
+                transform="rotate(-90 28 28)"
                 style={{ transition: 'stroke-dashoffset 0.1s linear, stroke 0.3s' }}
               />
             </svg>
+            <span className="lv-countdown">{countdown > 0 ? countdown : ''}</span>
           </div>
         )}
 
@@ -437,6 +467,11 @@ export function ActiveLivenessCapture({
             </p>
 
             {error && <p className="lv-bar-error">{error}</p>}
+
+            {/* Step label */}
+            {challengeActive && (
+              <span className="lv-step">Obrót {turnNumber} z 2</span>
+            )}
 
             {/* Challenge progress dots */}
             <div className="lv-dots">
@@ -536,8 +571,49 @@ const LIVENESS_CSS = `
 .lv-oval--success { animation: lv-borderSuccess 0.6s ease forwards; }
 .lv-oval--fail   { filter: drop-shadow(0 0 30px rgba(255,59,92,0.35)); }
 
-/* ── Direction Arrow ── */
+/* ── Direction Arrow (large, slides toward the turn side) ── */
 .lv-arrow-pulse { animation: lv-arrowPulse 1.2s ease-in-out infinite; }
+.lv-arrow {
+  filter: drop-shadow(0 0 10px rgba(0,255,223,0.5));
+}
+.lv-arrow--left  { animation: lv-arrowSlideL 1s ease-in-out infinite; }
+.lv-arrow--right { animation: lv-arrowSlideR 1s ease-in-out infinite; }
+.lv-arrow-label {
+  font-family: var(--mono);
+  font-size: 13px; font-weight: 700; letter-spacing: 0.12em;
+  color: #00ffdf;
+  text-shadow: 0 0 8px rgba(0,255,223,0.5);
+}
+
+/* ── Hold countdown (centre of progress ring) ── */
+.lv-countdown {
+  position: absolute; inset: 0;
+  display: flex; align-items: center; justify-content: center;
+  font-family: var(--sans);
+  font-size: 24px; font-weight: 700;
+  color: #eafffb;
+  text-shadow: 0 0 8px rgba(0,212,180,0.6);
+}
+
+/* ── Step label ── */
+.lv-step {
+  font-family: var(--mono);
+  font-size: 11px; font-weight: 600; letter-spacing: 0.1em;
+  color: var(--accent);
+  text-transform: uppercase;
+}
+
+/* ── Intro demo (animated head turn) ── */
+.lv-demo {
+  display: flex; flex-direction: column; align-items: center; gap: 6px;
+  margin: 6px 0 2px;
+}
+.lv-demo-head { animation: lv-demoTurn 2.8s ease-in-out infinite; transform-origin: 48px 48px; }
+.lv-demo-arrows {
+  display: flex; gap: 26px;
+  font-size: 14px; color: var(--accent); opacity: 0.65;
+  animation: lv-demoArrows 2.8s ease-in-out infinite;
+}
 
 /* ── Cancel Pill ── */
 .lv-cancel {
@@ -563,7 +639,8 @@ const LIVENESS_CSS = `
 .lv-bar-text {
   margin: 0;
   font-family: var(--sans);
-  font-size: 15px; font-weight: 600; letter-spacing: -0.01em;
+  font-size: 18px; font-weight: 700; letter-spacing: -0.01em;
+  text-align: center; line-height: 1.25;
 }
 .lv-bar-error {
   margin: 0;
@@ -657,6 +734,25 @@ const LIVENESS_CSS = `
 @keyframes lv-arrowPulse {
   0%, 100% { opacity: 0.6; transform: scale(1); }
   50%      { opacity: 1; transform: scale(1.15); }
+}
+@keyframes lv-arrowSlideL {
+  0%, 100% { opacity: 0.5; transform: translateX(6px); }
+  50%      { opacity: 1; transform: translateX(-8px); }
+}
+@keyframes lv-arrowSlideR {
+  0%, 100% { opacity: 0.5; transform: translateX(-6px); }
+  50%      { opacity: 1; transform: translateX(8px); }
+}
+@keyframes lv-demoTurn {
+  0%, 100% { transform: rotateY(0deg) translateX(0); }
+  25%      { transform: rotateY(-32deg) translateX(-6px); }
+  50%      { transform: rotateY(0deg) translateX(0); }
+  75%      { transform: rotateY(32deg) translateX(6px); }
+}
+@keyframes lv-demoArrows {
+  0%, 100% { opacity: 0.3; }
+  25%, 75% { opacity: 0.85; }
+  50%      { opacity: 0.3; }
 }
 @keyframes lv-spin {
   to { transform: rotate(360deg); }
