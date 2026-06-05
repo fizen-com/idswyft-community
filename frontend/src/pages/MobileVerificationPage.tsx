@@ -604,6 +604,7 @@ const MobileVerificationPage: React.FC = () => {
         headers: { 'Content-Type': 'application/json', 'X-Handoff-Token': token! },
         body: JSON.stringify({
           user_id: uid,
+          issuing_country: 'PL', // hosted UI obsługuje wyłącznie polski dowód
           ...(source && { source }),
           ...(verificationMode && { verification_mode: verificationMode }),
           ...(ageThreshold && { age_threshold: ageThreshold }),
@@ -698,6 +699,7 @@ const MobileVerificationPage: React.FC = () => {
     try {
       const fd = new FormData();
       fd.append('document_type', documentType);
+      fd.append('issuing_country', 'PL'); // wymusza ścieżkę OCR dla polskiego dowodu (fallbacki PL w engine)
       fd.append('document', frontFile);
       const res = await fetch(`${API_BASE_URL}/api/v2/verify/${verificationId}/front-document`, {
         method: 'POST', headers: { 'X-Handoff-Token': token }, body: fd,
@@ -796,6 +798,7 @@ const MobileVerificationPage: React.FC = () => {
       const fd = new FormData();
       fd.append('document', backFile);
       fd.append('document_type', documentType);
+      fd.append('issuing_country', 'PL'); // spójnie z przodem — polski dowód
       const res = await fetch(`${API_BASE_URL}/api/v2/verify/${verificationId}/back-document`, {
         method: 'POST', headers: { 'X-Handoff-Token': token }, body: fd,
       });
