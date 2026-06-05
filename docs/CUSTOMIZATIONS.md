@@ -10,7 +10,7 @@ Commity (chronologicznie):
 | `bc3b903` | Fix CI (test HeadTurnVerifier, npm audit) |
 | `d7e2b75` | Endpointy `/media` (compliance) |
 | `3082085` | PL UX + reliability (liveness, nationality, Page Builder mobile, retry, migracja completed_at) |
-| `7f66981` | Liveness-only retry + PL-ID-SPEC.md (wzór Dz.U. 2025 poz. 1031) + batch PYK UI/OCR |
+| `253b8ca` | Liveness-only retry + PL-ID-SPEC.md (wzór Dz.U. 2025 poz. 1031) + batch PYK UI/OCR |
 
 ---
 
