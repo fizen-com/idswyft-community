@@ -28,9 +28,9 @@ const STATUS_COLORS: Record<FaceStatus, string> = {
 };
 
 const GUIDANCE: Record<FaceStatus, string> = {
-  no_face:   'Position your face in the oval',
-  adjusting: 'Center your face\u2026 hold steady',
-  ready:     'Perfect! Capturing\u2026',
+  no_face:   'Umie\u015b\u0107 twarz w owalu',
+  adjusting: 'Wy\u015brodkuj twarz\u2026 trzymaj nieruchomo',
+  ready:     'Idealnie! Zapisuj\u0119\u2026',
 };
 
 // ─── Skin-tone detection ──────────────────────────────────────────────────────
@@ -176,7 +176,7 @@ const SelfieCameraCapture: React.FC<SelfieCameraCaptureProps> = ({
       if (err.name === 'NotAllowedError' || err.name === 'NotFoundError') {
         onFallback();
       } else {
-        setError('Unable to access front camera. Please check permissions.');
+        setError('Brak dostępu do przedniej kamery. Sprawdź uprawnienia.');
       }
     });
 
@@ -343,7 +343,7 @@ const SelfieCameraCapture: React.FC<SelfieCameraCaptureProps> = ({
       video.srcObject = stream;
       video.play().then(() => { if (mountedRef.current) setState('streaming'); });
     }).catch(() => {
-      if (mountedRef.current) setError('Could not restart camera.');
+      if (mountedRef.current) setError('Nie udało się ponownie uruchomić kamery.');
     });
   }, [capturedUrl]);
 
@@ -463,7 +463,7 @@ const SelfieCameraCapture: React.FC<SelfieCameraCaptureProps> = ({
           textShadow: '0 1px 4px rgba(0,0,0,0.6)',
           animation: state === 'streaming' ? 'selfiePulse 2s ease infinite' : 'none',
         }}>
-          {state === 'starting' ? 'Starting camera\u2026' : guidanceText}
+          {state === 'starting' ? 'Uruchamianie kamery\u2026' : guidanceText}
         </div>
 
         {/* Face quality bar */}
@@ -508,10 +508,10 @@ const SelfieCameraCapture: React.FC<SelfieCameraCaptureProps> = ({
         {state === 'captured' && (
           <div style={{ display: 'flex', gap: 12, width: '100%' }}>
             <button onClick={handleRetake} style={outlineBtnStyle}>
-              Retake
+              Zrób ponownie
             </button>
             <button onClick={handleUse} style={tealBtnStyle}>
-              Use Photo
+              Użyj zdjęcia
             </button>
           </div>
         )}

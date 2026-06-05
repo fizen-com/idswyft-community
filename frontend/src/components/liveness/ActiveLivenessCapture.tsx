@@ -28,33 +28,33 @@ function mapCameraError(err: unknown): CameraErrorInfo {
     switch (err.name) {
       case 'NotAllowedError':
         return {
-          message: 'Camera permission denied. Please grant camera access in your browser settings and try again.',
+          message: 'Odmowa dostępu do kamery. Zezwól na dostęp do kamery w ustawieniach przeglądarki i spróbuj ponownie.',
           allowFallback: false,
         };
       case 'NotFoundError':
         return {
-          message: 'No camera detected on this device.',
+          message: 'Nie wykryto kamery w tym urządzeniu.',
           allowFallback: true,
         };
       case 'NotReadableError':
         return {
-          message: 'Camera is in use by another app. Close other apps using the camera and try again.',
+          message: 'Kamera jest używana przez inną aplikację. Zamknij inne aplikacje korzystające z kamery i spróbuj ponownie.',
           allowFallback: false,
         };
       case 'OverconstrainedError':
         return {
-          message: 'Camera does not meet requirements (a front-facing camera is needed).',
+          message: 'Kamera nie spełnia wymagań (potrzebna jest przednia kamera).',
           allowFallback: false,
         };
       default:
         return {
-          message: `Camera access failed (${err.name}): ${err.message}`,
+          message: `Dostęp do kamery nie powiódł się (${err.name}): ${err.message}`,
           allowFallback: false,
         };
     }
   }
   return {
-    message: 'Camera access failed for an unknown reason.',
+    message: 'Dostęp do kamery nie powiódł się z nieznanego powodu.',
     allowFallback: false,
   };
 }
@@ -159,13 +159,13 @@ export function ActiveLivenessCapture({
             clearTimeout(readyTimerRef.current);
             readyTimerRef.current = undefined;
           }
-          setCameraError('Could not start the video preview. Please try again.');
+          setCameraError('Nie udało się uruchomić podglądu z kamery. Spróbuj ponownie.');
         });
 
         // If `playing` doesn't fire within the timeout, surface an error
         // rather than leaving the user staring at a frozen black video.
         readyTimerRef.current = setTimeout(() => {
-          setCameraError('Camera failed to start within 8 seconds. Please try again.');
+          setCameraError('Kamera nie uruchomiła się w ciągu 8 sekund. Spróbuj ponownie.');
         }, STREAM_READY_TIMEOUT_MS);
       })
       .catch((err: unknown) => {
@@ -210,17 +210,17 @@ export function ActiveLivenessCapture({
       <div style={FRAME_STYLE}>
         <style>{LIVENESS_CSS}</style>
         <div className="lv-intro">
-          <h2 className="lv-intro-title">Camera access required</h2>
+          <h2 className="lv-intro-title">Wymagany dostęp do kamery</h2>
           <p className="lv-intro-body">
-            We&apos;ll use your front-facing camera for a quick liveness check
-            to verify it&apos;s really you. Your video is processed for the
-            check and not stored as a recording.
+            Użyjemy przedniej kamery do szybkiego sprawdzenia żywotności, aby
+            potwierdzić, że to naprawdę Ty. Obraz jest przetwarzany na potrzeby
+            sprawdzenia i nie jest zapisywany jako nagranie.
           </p>
           <button onClick={requestCamera} className="lv-btn-primary">
-            Start camera
+            Włącz kamerę
           </button>
           <button onClick={onCancel} className="lv-btn-ghost">
-            Skip
+            Pomiń
           </button>
         </div>
       </div>
@@ -233,13 +233,13 @@ export function ActiveLivenessCapture({
       <div style={FRAME_STYLE}>
         <style>{LIVENESS_CSS}</style>
         <div className="lv-intro">
-          <h2 className="lv-intro-title lv-intro-title--err">Camera error</h2>
+          <h2 className="lv-intro-title lv-intro-title--err">Błąd kamery</h2>
           <p className="lv-intro-body">{cameraError}</p>
           <button onClick={requestCamera} className="lv-btn-primary">
-            Try again
+            Spróbuj ponownie
           </button>
           <button onClick={onCancel} className="lv-btn-ghost">
-            Skip
+            Pomiń
           </button>
         </div>
       </div>
@@ -276,10 +276,10 @@ export function ActiveLivenessCapture({
   const challengeActive = phase === 'turn' || phase === 'return_center';
 
   // ── Tip text ──
-  const tipText = phase === 'ready' ? 'Good lighting · Face uncovered · No sunglasses'
-    : phase === 'failed' ? 'Ensure good lighting and face is centred'
-    : phase === 'completed' ? 'Verification complete'
-    : 'Keep your face visible throughout';
+  const tipText = phase === 'ready' ? 'Dobre światło · Odkryta twarz · Bez okularów przeciwsłonecznych'
+    : phase === 'failed' ? 'Zadbaj o dobre światło i wyśrodkuj twarz'
+    : phase === 'completed' ? 'Weryfikacja zakończona'
+    : 'Trzymaj twarz widoczną przez cały czas';
 
   // ── Oval stroke color ──
   const ovalStroke = borderState === 'fail' ? '#ff3b5c'
@@ -423,7 +423,7 @@ export function ActiveLivenessCapture({
         {/* Cancel pill — top-left */}
         {!isProcessing && (
           <button onClick={onCancel} className="lv-cancel">
-            {phase === 'completed' ? 'Done' : 'Skip'}
+            {phase === 'completed' ? 'Gotowe' : 'Pomiń'}
           </button>
         )}
 
@@ -454,7 +454,7 @@ export function ActiveLivenessCapture({
             {/* Retry button */}
             {phase === 'failed' && (
               <button onClick={retry} className="lv-btn-retry">
-                Try Again
+                Spróbuj ponownie
               </button>
             )}
           </div>

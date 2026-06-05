@@ -29,9 +29,9 @@ const FOCUS_COLORS: Record<FocusLevel, string> = {
 };
 
 const GUIDANCE_TEXT: Record<FocusLevel, string> = {
-  blurry: 'Move closer to your ID',
-  medium: 'Hold steady\u2026',
-  sharp:  'Perfect! Capturing\u2026',
+  blurry: 'Przybli\u017c dow\u00f3d',
+  medium: 'Trzymaj nieruchomo\u2026',
+  sharp:  'Idealnie! Zapisuj\u0119\u2026',
 };
 
 // ─── Component ────────────────────────────────────────────────────────────────
@@ -101,7 +101,7 @@ const IDCameraCapture: React.FC<IDCameraCaptureProps> = ({
       if (err.name === 'NotAllowedError' || err.name === 'NotFoundError') {
         onFallback();
       } else {
-        setError('Unable to access camera. Please check permissions.');
+        setError('Brak dostępu do kamery. Sprawdź uprawnienia.');
       }
     });
 
@@ -302,7 +302,7 @@ const IDCameraCapture: React.FC<IDCameraCaptureProps> = ({
       video.srcObject = stream;
       video.play().then(() => { if (mountedRef.current) setState('streaming'); });
     }).catch(() => {
-      if (mountedRef.current) setError('Could not restart camera.');
+      if (mountedRef.current) setError('Nie udało się ponownie uruchomić kamery.');
     });
   }, [capturedUrl]);
 
@@ -314,7 +314,7 @@ const IDCameraCapture: React.FC<IDCameraCaptureProps> = ({
         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', flex: 1, padding: 32, textAlign: 'center', gap: 16 }}>
           <div style={{ fontSize: 48, opacity: 0.5 }}>!</div>
           <p style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 13, color: '#e8f4f8', lineHeight: 1.5 }}>{error}</p>
-          <button onClick={onClose} style={outlineBtnStyle}>Go Back</button>
+          <button onClick={onClose} style={outlineBtnStyle}>Wróć</button>
         </div>
       </div>
     );
@@ -322,9 +322,9 @@ const IDCameraCapture: React.FC<IDCameraCaptureProps> = ({
 
   // ── Render ───────────────────────────────────────────────────────────────
   const focusColor = warmingUp ? '#f59e0b' : FOCUS_COLORS[focusLevel];
-  const positionText = variant === 'back' ? 'Position the barcode side' : 'Position the front of your ID';
+  const positionText = variant === 'back' ? 'Ustaw stronę z kodem' : 'Ustaw przód dowodu';
   const guidanceText = state === 'captured'
-    ? 'Photo captured!'
+    ? 'Zdjęcie zrobione!'
     : warmingUp
       ? positionText
       : (focusLevel === 'blurry' ? positionText : GUIDANCE_TEXT[focusLevel]);
@@ -401,7 +401,7 @@ const IDCameraCapture: React.FC<IDCameraCaptureProps> = ({
           padding: '6px 12px', borderRadius: 20,
           backdropFilter: 'blur(4px)',
         }}>
-          {variant === 'front' ? 'Front of ID' : 'Back of ID'}
+          {variant === 'front' ? 'Przód dowodu' : 'Tył dowodu'}
         </span>
 
         <div style={{ width: 40 }} /> {/* Spacer for centering */}
@@ -422,7 +422,7 @@ const IDCameraCapture: React.FC<IDCameraCaptureProps> = ({
           textShadow: '0 1px 4px rgba(0,0,0,0.6)',
           animation: state === 'streaming' ? 'focusPulse 2s ease infinite' : 'none',
         }}>
-          {state === 'starting' ? 'Starting camera\u2026' : guidanceText}
+          {state === 'starting' ? 'Uruchamianie kamery\u2026' : guidanceText}
         </div>
 
         {/* Focus quality bar (when streaming) */}
@@ -467,10 +467,10 @@ const IDCameraCapture: React.FC<IDCameraCaptureProps> = ({
         {state === 'captured' && (
           <div style={{ display: 'flex', gap: 12, width: '100%' }}>
             <button onClick={handleRetake} style={outlineBtnStyle}>
-              Retake
+              Zrób ponownie
             </button>
             <button onClick={handleUse} style={tealBtnStyle}>
-              Use Photo
+              Użyj zdjęcia
             </button>
           </div>
         )}

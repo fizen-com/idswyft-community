@@ -10,6 +10,7 @@ Repo: fork `fizen-com/idswyft-community` (z `team-idswyft/idswyft-community`, ba
 | [PYK-INTEGRATION.md](PYK-INTEGRATION.md) | Kontrakt integracji idswyft↔PYK: auth, endpointy, webhook, media, PESEL |
 | [CUSTOMIZATIONS.md](CUSTOMIZATIONS.md) | Wszystkie nasze zmiany w kodzie (PL OCR, liveness, Page Builder, retry, /media, PESEL) z odnośnikami do commitów i plików |
 | [VERIFICATION-FLOW.md](VERIFICATION-FLOW.md) | Pipeline weryfikacji, wyniki (verified/failed/manual_review), liveness, cross-validation |
+| [PL-ID-SPEC.md](PL-ID-SPEC.md) | Specyfikacja 🇵🇱 dowodu osobistego (wzór Dz.U. 2025 poz. 1031): układ pól awers/rewers, formaty, MRZ TD1, PESEL, mapowanie na OCR/walidację |
 | [DEPLOYMENT.md](DEPLOYMENT.md) | Deploy preprod (Fly), sync prod (GCP), migracje, build |
 | [OPERATIONS.md](OPERATIONS.md) | Runbook: OTP/email, logi, restart, capacity, znane pułapki, audyt schematu |
 

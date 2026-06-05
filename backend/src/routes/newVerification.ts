@@ -2321,6 +2321,202 @@ router.post('/:verification_id/restart',
   })
 );
 
+// ─── Liveness-only retry ─────────────────────────────────────────────────────
+// When the document checks passed but the verification failed at the liveness /
+// face-match stage, this resets the session to AWAITING_LIVE WITHOUT discarding
+// the scanned document. The user only re-captures their live photo.
+//
+// The front-document face embedding is stripped from the persisted context once
+// the verification reaches a terminal state (GDPR Art. 9). We re-derive it from
+// the stored front document image so face match can run — keeping the GDPR
+// invariant intact (the embedding is never permanently persisted; saveSessionState
+// re-strips it on the next terminal state).
+router.post('/:verification_id/restart-liveness',
+  authenticateAPIKeyOrHandoff,
+  verificationRateLimit,
+  [
+    param('verification_id').isUUID().withMessage('Invalid verification ID'),
+  ],
+  validate,
+  catchAsync(async (req: Request, res: Response) => {
+    const { verification_id } = req.params;
+    const verification = await requireOwnedVerification(req, verification_id);
+    const isSandbox = (verification as any).is_sandbox || false;
+
+    // Only failed verifications can be retried
+    const sessionPre = await hydrateSession(verification_id, isSandbox);
+    const mappedPre = mapStatusForResponse(sessionPre.getState());
+    if (mappedPre.final_result !== 'failed') {
+      return res.status(400).json({
+        success: false,
+        message: 'Only failed verifications can be retried',
+      });
+    }
+
+    // Eligibility: document checks must have passed. The front document must be
+    // extracted and cross-validation must not be a hard reject. Otherwise the
+    // failure is upstream of liveness — direct the client to the full /restart.
+    const ctx = await loadSessionState(verification_id);
+    const xval = ctx?.cross_validation as any;
+    const docsOk = !!ctx?.front_extraction
+      && !!ctx?.cross_validation
+      && xval?.verdict !== 'REJECT'
+      && !xval?.has_critical_failure;
+    if (!ctx || !docsOk) {
+      return res.status(400).json({
+        success: false,
+        code: 'LIVENESS_RETRY_NOT_ELIGIBLE',
+        message: 'Document checks did not pass — use POST /restart to retry from the document scan.',
+      });
+    }
+
+    // Enforce max retries (shared counter with full restart)
+    const MAX_RETRIES = 10;
+    const currentRetryCount = (verification as any).retry_count ?? 0;
+    if (currentRetryCount >= MAX_RETRIES) {
+      return res.status(400).json({
+        success: false,
+        message: `Maximum retry attempts reached (${MAX_RETRIES})`,
+        retry_count: currentRetryCount,
+      });
+    }
+
+    // Re-derive the ID face embedding from the stored front document if it was
+    // stripped on the terminal failure. Non-fatal: if it can't be recovered, face
+    // match will be skipped and the verification routed to manual review.
+    let faceEmbedding = ctx.front_extraction!.face_embedding ?? null;
+    if (!faceEmbedding || faceEmbedding.length === 0) {
+      try {
+        const { data: frontDoc } = await supabase.from('documents')
+          .select('id, file_path, document_type')
+          .eq('verification_request_id', verification_id)
+          .order('created_at', { ascending: true })
+          .limit(1)
+          .maybeSingle();
+        if (frontDoc?.file_path) {
+          const buffer = await storageService.downloadFile(frontDoc.file_path);
+          const docType = (frontDoc as any).document_type
+            || (ctx.front_extraction!.ocr as any)?.detected_document_type
+            || 'national_id';
+          const country = ctx.issuing_country
+            || (verification as any).issuing_country?.toUpperCase()
+            || undefined;
+          const developerId = (req as any).developer.id;
+          const llmConfig = await getDeveloperLLMConfig(developerId);
+          const reextract = engineClient.isEnabled()
+            ? await engineClient.extractFront(buffer, {
+                documentId: (frontDoc as any).id,
+                documentType: docType,
+                issuingCountry: country,
+                verificationId: verification_id,
+                llmConfig,
+              })
+            : await extractFrontDocument((frontDoc as any).file_path, (frontDoc as any).id, docType, country, verification_id, llmConfig, buffer);
+          if (reextract?.face_embedding && reextract.face_embedding.length > 0) {
+            faceEmbedding = reextract.face_embedding;
+          }
+        }
+      } catch (err) {
+        logger.warn('restart-liveness: face re-extraction failed (face match will be routed to manual review)', {
+          verification_id, error: err instanceof Error ? err.message : 'unknown',
+        });
+      }
+    }
+
+    // Build the reset context: back to AWAITING_LIVE, clearing every live-stage
+    // output while preserving the document extraction + cross-validation.
+    const newCtx: any = {
+      ...ctx,
+      current_step: VerificationStatus.AWAITING_LIVE,
+      face_match: null,
+      liveness: null,
+      deepfake_check: null,
+      age_estimation: null,
+      voice_match: null,
+      velocity_analysis: null,
+      geo_analysis: null,
+      rejection_reason: null,
+      rejection_detail: null,
+      completed_at: null,
+    };
+    newCtx.front_extraction = { ...ctx.front_extraction, face_embedding: faceEmbedding };
+
+    // Reset the verification_requests row with optimistic lock on retry_count.
+    // Keep document_id + cross_validation_score (document stage is preserved).
+    const { data: updated } = await supabase.from('verification_requests').update({
+      status: 'pending',
+      face_match_score: null,
+      liveness_score: null,
+      voice_match_score: null,
+      voice_challenge: null,
+      voice_challenge_created_at: null,
+      failure_reason: null,
+      manual_review_reason: null,
+      processing_completed_at: null,
+      completed_at: null,
+      selfie_id: null,
+      duplicate_flags: null,
+      retry_count: currentRetryCount + 1,
+    }).eq('id', verification_id)
+      .eq('retry_count', currentRetryCount)
+      .select('id');
+
+    if (!updated?.length) {
+      return res.status(409).json({
+        success: false,
+        message: 'Verification was modified concurrently. Please try again.',
+      });
+    }
+
+    // Persist the mutated context. saveSessionState only strips the embedding on
+    // terminal states; AWAITING_LIVE is not terminal, so it survives for the next
+    // live-capture request (mirrors the normal in-progress flow).
+    await saveSessionState(verification_id, newCtx);
+
+    // Delete only the live-stage artifacts — keep documents, context, and the
+    // document-phash dedup fingerprint (the scan is unchanged).
+    await Promise.all([
+      supabase.from('selfies').delete().eq('verification_request_id', verification_id),
+      supabase.from('verification_risk_scores').delete().eq('verification_request_id', verification_id),
+      supabase.from('dedup_fingerprints').delete()
+        .eq('verification_request_id', verification_id)
+        .eq('fingerprint_type', 'face_lsh'),
+    ]);
+
+    logVerificationEvent('verification_liveness_retried', verification_id, {
+      developerId: (req as any).developer.id,
+      retryCount: currentRetryCount + 1,
+      faceEmbeddingRecovered: !!(faceEmbedding && faceEmbedding.length > 0),
+    });
+
+    // Reset the handoff session so the next attempt can complete its lifecycle.
+    const handoffToken = req.headers['x-handoff-token'] as string;
+    if (handoffToken) {
+      const tokenHash = hashHandoffToken(handoffToken);
+      await supabase.from('mobile_handoff_sessions')
+        .update({ status: 'pending', result: null })
+        .eq('token', tokenHash)
+        .eq('status', 'failed');
+    }
+
+    const liveStep = mapStatusForResponse(newCtx).current_step;
+
+    res.json({
+      success: true,
+      verification_id,
+      retry_count: currentRetryCount + 1,
+      next_step: 'AWAITING_LIVE',
+      face_match_available: !!(faceEmbedding && faceEmbedding.length > 0),
+      message: 'Liveness retry ready — re-capture your live photo (document scan preserved)',
+    });
+
+    // Broadcast the reset to Realtime subscribers
+    broadcastStatusChange(
+      verification_id, 'AWAITING_LIVE', liveStep, null, null
+    ).catch(() => {});
+  })
+);
+
 router.get('/:verification_id/status',
   authenticateAPIKeyOrHandoff,
   [

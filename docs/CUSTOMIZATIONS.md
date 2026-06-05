@@ -10,6 +10,7 @@ Commity (chronologicznie):
 | `bc3b903` | Fix CI (test HeadTurnVerifier, npm audit) |
 | `d7e2b75` | Endpointy `/media` (compliance) |
 | `3082085` | PL UX + reliability (liveness, nationality, Page Builder mobile, retry, migracja completed_at) |
+| `7f66981` | Liveness-only retry + PL-ID-SPEC.md (wzór Dz.U. 2025 poz. 1031) + batch PYK UI/OCR |
 
 ---
 
@@ -102,6 +103,47 @@ Wagi checków: face_present 0.15, head_turn 0.25, correct_direction 0.20, return
 - `supabase/migrations/61_add_verification_completed_at.sql` — **dodaje `verification_requests.completed_at`** (trwały fix; preprod dostał też ręczny `ALTER`).
 
 > Ten bug jest też na prodzie (prod DB nie ma jeszcze `completed_at`) — patrz DEPLOYMENT.md, krok migracji.
+
+---
+
+## 7b. Liveness-only retry (powtórka samego live capture)
+
+**Problem:** gdy dokumenty przeszły, a weryfikacja padła dopiero na liveness/face-match,
+„Spróbuj ponownie" kasował cały skan i kazał robić dowód od zera. Dowód był dobry — padła
+tylko twarz/ruch głowy.
+
+**Rozwiązanie:** nowy endpoint resetuje sesję do `AWAITING_LIVE` **bez** kasowania
+zeskanowanego dokumentu — user powtarza tylko zdjęcie twarzy.
+
+**Endpoint:** `POST /api/v2/verify/:id/restart-liveness` (auth: API key lub handoff token).
+- **Gating:** tylko `final_result === 'failed'` i gdy dokumenty przeszły (`front_extraction`
+  obecne, `cross_validation` nie REJECT / bez `has_critical_failure`). Inaczej
+  `400 LIVENESS_RETRY_NOT_ELIGIBLE` → klient ma użyć pełnego `/restart`.
+- **Re-ekstrakcja twarzy z dowodu:** embedding twarzy z przodu jest **strippowany na stanie
+  terminalnym** (GDPR Art. 9). Endpoint **re-ekstrahuje** embedding z zapisanego obrazu przodu
+  (`extractFront`) i wstawia tylko `front_extraction.face_embedding` (OCR bez zmian). Inwariant
+  GDPR zachowany — `saveSessionState` ponownie strippuje na kolejnym stanie terminalnym
+  (AWAITING_LIVE nie jest terminalny). Gdy re-ekstrakcja zawiedzie → face match →
+  `manual_review` (bezpiecznie).
+- **Reset:** czyści tylko wyjścia etapu live (`face_match`, `liveness`, `deepfake_check`,
+  `age_estimation`, `voice_match`, `velocity_analysis`, `geo_analysis`, scores, `selfie_id`,
+  `duplicate_flags`); kasuje `selfies`, `verification_risk_scores`, odcisk `face_lsh`
+  (zostawia `documents`, `verification_contexts`, odcisk `document_phash`). Współdzielony
+  `retry_count` (limit 10), optimistic lock, reset handoff session — jak `/restart`.
+
+**Zmiany:**
+- `backend/src/routes/newVerification.ts` — endpoint `POST /:id/restart-liveness`.
+- `frontend/src/pages/MobileVerificationPage.tsx`:
+  - `isLivenessStageFailure(fr)` — rozpoznaje porażkę etapu live (`LIVENESS_FAILED`,
+    `FACE_NOT_DETECTED`, `FACE_MATCH_FAILED`, `DEEPFAKE_DETECTED`, `liveness_passed===false`,
+    `face_match_passed===false`).
+  - `handleRetryLiveness()` — woła `/restart-liveness`, resetuje tylko stan selfie, skacze na
+    ekran `live`; na `400` robi fallback do pełnego `handleRetry()`.
+  - Ekran wyniku: porażka etapu live → przycisk **„Powtórz zdjęcie twarzy"** + link
+    **„Zacznij od nowa (skan dowodu)"**; inaczej zwykłe „Spróbuj ponownie".
+
+**Przy okazji:** naprawiony pre-existing czerwony test `HeadTurnVerifier.test.ts` (`MIN_YAW_DELTA`
+obniżony 8→5 wcześniej, test wciąż używał yaw=5 jako „insufficient" → zmienione na 3).
 
 ---
 

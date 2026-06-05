@@ -22,13 +22,13 @@ const css = `
 `;
 
 // ─── Step definitions ───────────────────────────────────────────────────────
-const FULL_STEP_LABELS = ['Front ID', 'Back ID', 'Checking', 'Live Photo', 'Complete'];
-const FULL_VOICE_STEP_LABELS = ['Front ID', 'Back ID', 'Checking', 'Live Photo', 'Voice', 'Complete'];
-const DOCUMENT_ONLY_STEP_LABELS = ['Front ID', 'Back ID', 'Checking', 'Complete'];
-const IDENTITY_STEP_LABELS = ['Front ID', 'Checking', 'Live Photo', 'Complete'];
-const AGE_ONLY_STEP_LABELS = ['Upload ID', 'Complete'];
+const FULL_STEP_LABELS = ['Przód', 'Tył', 'Weryfikacja', 'Twarz', 'Gotowe'];
+const FULL_VOICE_STEP_LABELS = ['Przód', 'Tył', 'Weryfikacja', 'Twarz', 'Głos', 'Gotowe'];
+const DOCUMENT_ONLY_STEP_LABELS = ['Przód', 'Tył', 'Weryfikacja', 'Gotowe'];
+const IDENTITY_STEP_LABELS = ['Przód', 'Weryfikacja', 'Twarz', 'Gotowe'];
+const AGE_ONLY_STEP_LABELS = ['Dowód', 'Gotowe'];
 // Passport in document_only mode: front scan → done
-const PASSPORT_DOC_ONLY_STEP_LABELS = ['Front ID', 'Checking', 'Complete'];
+const PASSPORT_DOC_ONLY_STEP_LABELS = ['Przód', 'Weryfikacja', 'Gotowe'];
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 type Screen = 'front' | 'back' | 'checking' | 'live' | 'voice' | 'done';
@@ -37,29 +37,37 @@ const SCREEN_IDX = { front: 0, back: 1, checking: 2, live: 3, voice: 4, done: 5 
 
 // ─── Sub-Components ─────────────────────────────────────────────────────────
 
-/* Step progress tracker — v2 stepper pattern (border-top segments) */
+/* Step progress tracker — numbered circles + connectors (PYK style) */
 const StepTracker: React.FC<{ activeIdx: number; labels?: string[] }> = ({ activeIdx, labels = FULL_STEP_LABELS }) => (
-  <div style={{ padding: '12px 24px 0', display: 'grid', gridTemplateColumns: `repeat(${labels.length}, 1fr)`, gap: 8, fontFamily: 'var(--mono)', fontSize: 9 }}>
+  <div style={{ padding: '16px 16px 4px', display: 'flex', alignItems: 'flex-start' }}>
     {labels.map((label, i) => {
       const state = i < activeIdx ? 'done' : i === activeIdx ? 'active' : 'pending';
+      const filled = state !== 'pending';
       return (
-        <div key={i} style={{ position: 'relative' }}>
-          {/* Segment bar */}
+        <div key={i} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', position: 'relative', minWidth: 0 }}>
+          {/* Connector line from the previous circle */}
+          {i > 0 && (
+            <div style={{
+              position: 'absolute', top: 14, right: '50%', width: '100%', height: 2,
+              background: i <= activeIdx ? 'var(--accent)' : 'var(--rule)',
+            }} />
+          )}
+          {/* Circle */}
           <div style={{
-            height: 2, width: '100%', marginBottom: 8,
-            background: state === 'done' ? 'var(--accent)' : state === 'active' ? 'var(--ink)' : 'var(--rule)',
-          }}>
-            {state === 'active' && (
-              <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 2,
-                background: 'var(--ink)',
-                animation: 'segPulse 1.8s ease-in-out infinite',
-              }} />
-            )}
-          </div>
+            position: 'relative', zIndex: 1,
+            width: 30, height: 30, borderRadius: '50%',
+            background: filled ? 'var(--accent)' : 'var(--panel)',
+            border: `2px solid ${filled ? 'var(--accent)' : 'var(--rule-strong)'}`,
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            color: filled ? '#ffffff' : 'var(--mid)',
+            fontFamily: 'var(--sans)', fontSize: 14, fontWeight: 700,
+            boxShadow: state === 'active' ? '0 0 0 4px var(--accent-soft)' : 'none',
+          }}>{state === 'done' ? '✓' : i + 1}</div>
           {/* Label */}
           <span style={{
-            textTransform: 'uppercase', letterSpacing: '0.06em',
-            color: state === 'done' ? 'var(--accent-ink)' : state === 'active' ? 'var(--ink)' : 'var(--mid)',
+            marginTop: 7, fontFamily: 'var(--sans)', fontSize: 11,
+            fontWeight: state === 'active' ? 600 : 500, lineHeight: 1.2, textAlign: 'center',
+            color: state === 'pending' ? 'var(--mid)' : 'var(--ink)', padding: '0 2px',
           }}>{label}</span>
         </div>
       );
@@ -89,15 +97,15 @@ const PrimaryBtn: React.FC<{
     onClick={onClick}
     disabled={disabled}
     style={{
-      width: '100%', padding: '14px 20px', border: '1px solid var(--accent)',
+      width: '100%', padding: '15px 20px', border: 'none', borderRadius: 12,
       background: disabled ? 'var(--accent-soft)' : 'var(--accent)',
-      color: disabled ? 'var(--mid)' : 'var(--paper)',
-      fontFamily: 'var(--mono)', fontSize: 13, fontWeight: 500,
-      letterSpacing: '0.04em', textTransform: 'uppercase',
+      color: disabled ? 'var(--mid)' : '#ffffff',
+      fontFamily: 'var(--sans)', fontSize: 15, fontWeight: 600,
+      letterSpacing: '0', textTransform: 'none',
       cursor: disabled ? 'not-allowed' : 'pointer',
       position: 'relative', overflow: 'hidden',
       transition: 'transform 120ms ease, opacity 120ms ease', flexShrink: 0,
-      opacity: disabled ? 0.5 : 1,
+      opacity: disabled ? 0.6 : 1,
     }}
   >
     {children}
@@ -218,14 +226,8 @@ const IDViewfinder: React.FC<{
 };
 
 /* Ambient decoration — v2: subtle rule-colored lines instead of glow */
-const AmbientGlow: React.FC = () => (
-  <>
-    <div style={{
-      position: 'absolute', top: 0, left: 24, right: 24, height: 1,
-      pointerEvents: 'none', background: 'var(--rule)', opacity: 0.5,
-    }} />
-  </>
-);
+// Removed decorative divider line (was a thin horizontal rule at the top of each screen).
+const AmbientGlow: React.FC = () => null;
 
 /* Oval Face Viewfinder — v2: dashed oval with accent color */
 const OvalFaceViewfinder: React.FC<{
@@ -306,9 +308,9 @@ const OvalFaceViewfinder: React.FC<{
 
 /* Liveness Cues — 3 cycling circles */
 const LIVENESS_CUES = [
-  { emoji: '😐', label: 'Look ahead' },
-  { emoji: '😊', label: 'Smile' },
-  { emoji: '↔', label: 'Turn slightly' },
+  { emoji: '😐', label: 'Patrz przed siebie' },
+  { emoji: '😊', label: 'Uśmiechnij się' },
+  { emoji: '↔', label: 'Obróć lekko głowę' },
 ] as const;
 
 const LivenessCues: React.FC<{ hidden?: boolean }> = ({ hidden }) => {
@@ -350,6 +352,52 @@ const LivenessCues: React.FC<{ hidden?: boolean }> = ({ hidden }) => {
 };
 
 // ─── Main Component ─────────────────────────────────────────────────────────
+// Build a Polish, actionable hint explaining WHY a verification failed,
+// so the user knows how to scan better next time.
+const PB_FIELD_LABEL_PL: Record<string, string> = {
+  full_name: 'imię i nazwisko',
+  date_of_birth: 'data urodzenia',
+  id_number: 'numer dokumentu',
+  expiry_date: 'data ważności',
+  nationality: 'obywatelstwo',
+};
+function getFailureHint(fr: any): string | null {
+  if (!fr) return null;
+  if (fr.rejection_reason === 'LIVENESS_FAILED' || fr.liveness_passed === false) {
+    return 'Nie wykryto wyraźnego ruchu głową. Patrz prosto w kamerę i zdecydowanie obróć głowę w bok, potem wróć do środka — w dobrym świetle, bez nakrycia głowy.';
+  }
+  if (fr.face_match_passed === false) {
+    return 'Twarz na selfie nie pasuje do zdjęcia z dowodu. Zrób selfie prosto w kamerę, w dobrym świetle, bez okularów i nakrycia głowy.';
+  }
+  if (fr.cross_validation_results?.document_expired) {
+    return 'Dokument wygląda na przeterminowany — sprawdź datę ważności.';
+  }
+  const fs = fr.cross_validation_results?.field_scores || {};
+  const bad = Object.keys(PB_FIELD_LABEL_PL).filter((k) => fs[k] && fs[k].passed === false);
+  if (bad.length) {
+    return `System nie odczytał pewnie: ${bad.map((k) => PB_FIELD_LABEL_PL[k]).join(', ')}. Zrób ostrzejsze zdjęcie — cała karta w kadrze, dobre światło, bez odblasków i rozmycia. Z tyłu upewnij się, że kod/MRZ jest wyraźny.`;
+  }
+  if (fr.rejection_reason === 'CROSS_VALIDATION_FAILED') {
+    return 'Dane z przodu i tyłu nie zgodziły się lub zdjęcie było nieczytelne. Zrób ostrzejsze zdjęcie obu stron w dobrym świetle.';
+  }
+  return null;
+}
+
+// True when the document checks passed but the verification failed at the
+// liveness / face-match stage — in that case we offer a retry of ONLY the live
+// capture (the scanned document is preserved server-side).
+function isLivenessStageFailure(fr: any): boolean {
+  if (!fr) return false;
+  return fr.rejection_reason === 'LIVENESS_FAILED'
+    || fr.rejection_reason === 'FACE_NOT_DETECTED'
+    || fr.rejection_reason === 'FACE_MATCH_FAILED'
+    || fr.rejection_reason === 'DEEPFAKE_DETECTED'
+    || fr.liveness_passed === false
+    || fr.face_match_passed === false
+    || fr.liveness_results?.liveness_passed === false
+    || fr.face_match_results?.passed === false;
+}
+
 const MobileVerificationPage: React.FC = () => {
   const [searchParams] = useSearchParams();
   const token = searchParams.get('token');
@@ -370,7 +418,7 @@ const MobileVerificationPage: React.FC = () => {
   const [screenIdx, setScreenIdx] = useState(0);
   const [verificationId, setVerificationId] = useState<string | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
-  const [documentType, setDocumentType] = useState('national_id');
+  const documentType = 'national_id'; // tylko dowód osobisty — selektor typu usunięty
 
   // File state
   const [frontFile, setFrontFile] = useState<File | null>(null);
@@ -392,7 +440,7 @@ const MobileVerificationPage: React.FC = () => {
   const selfieMetadataRef = useRef<LivenessMetadata | null>(null);
 
   // Checking screen messages
-  const [checkingMsg, setCheckingMsg] = useState('Verifying your document…');
+  const [checkingMsg, setCheckingMsg] = useState('Weryfikujemy Twój dokument…');
 
   // Passport back-skip state
   const [skipBack, setSkipBack] = useState(false);
@@ -428,14 +476,21 @@ const MobileVerificationPage: React.FC = () => {
 
   const screen: Screen = SCREENS[screenIdx];
 
-  // ── Page Builder: apply theme + CSS variable overrides ──────────────────
-  const pbTheme: 'light' | 'dark' = pageConfig?.theme === 'light' ? 'light' : 'dark';
+  // ── Theme: PYK look by default (light, brand palette, DM Sans) ──────────
+  // This fork serves PYK, so the verification flow defaults to PYK's design.
+  // Page Builder config still overrides individual values on top.
+  const PYK_BASE_VARS =
+    "--paper:#F5F5F5;--panel:#FFFFFF;--ink:#1A1A2E;--mid:#5A5A6E;--soft:#9CA3AF;" +
+    "--rule:#E6E7EB;--rule-strong:#D1D5DB;--panel-2:#FFFFFF;" +
+    "--accent:#1B8A4E;--accent-ink:#137A42;--accent-soft:rgba(27,138,78,0.10);" +
+    "--flag:#EF4444;--flag-soft:rgba(239,68,68,0.10);" +
+    "--sans:'DM Sans',system-ui,-apple-system,sans-serif;--mono:'DM Sans',system-ui,sans-serif;";
+  const pbTheme: 'light' | 'dark' = pageConfig?.theme === 'dark' ? 'dark' : 'light';
   useEffect(() => {
-    if (!pageConfig) return;
     const prev = document.documentElement.getAttribute('data-theme');
     document.documentElement.setAttribute('data-theme', pbTheme);
     return () => { if (prev) document.documentElement.setAttribute('data-theme', prev); };
-  }, [pageConfig, pbTheme]);
+  }, [pbTheme]);
 
   const PB_FONT_STACK: Record<string, string> = {
     'dm-sans': "'DM Sans', system-ui, sans-serif",
@@ -446,7 +501,8 @@ const MobileVerificationPage: React.FC = () => {
     'ibm-plex-mono': "'IBM Plex Mono', ui-monospace, monospace",
   };
   const isHex = (s: unknown): s is string => typeof s === 'string' && /^#[0-9a-fA-F]{6}$/.test(s);
-  // Theme/var overrides scoped to the active data-theme so they beat index.css.
+  // PYK base palette always applied (scoped to active theme so it beats index.css),
+  // then Page Builder config overrides appended after it.
   const pbThemeCss = (() => {
     const decls: string[] = [];
     if (isHex(pageConfig?.backgroundColor)) decls.push(`--paper: ${pageConfig.backgroundColor};`);
@@ -456,8 +512,7 @@ const MobileVerificationPage: React.FC = () => {
     if (accent) { decls.push(`--accent: ${accent};`); decls.push(`--accent-ink: ${accent};`); }
     const fam = pageConfig?.fontFamily && PB_FONT_STACK[pageConfig.fontFamily];
     if (fam) decls.push(`--sans: ${fam};`);
-    if (!decls.length) return '';
-    return `html[data-theme="${pbTheme}"] { ${decls.join(' ')} }`;
+    return `html[data-theme="${pbTheme}"] { ${PYK_BASE_VARS}${decls.join(' ')} }`;
   })();
 
   // Map the default English stepper labels to the developer's configured labels.
@@ -488,20 +543,20 @@ const MobileVerificationPage: React.FC = () => {
   // ── Handoff session fetch ──────────────────────────────────────────────
   useEffect(() => {
     if (!token) {
-      setError('Invalid link — no token provided.');
+      setError('Nieprawidłowy link — brak tokenu.');
       setLoading(false);
       return;
     }
     const controller = new AbortController();
     fetch(`${API_BASE_URL}/api/verify/handoff/${token}/session`, { signal: controller.signal })
       .then(r => {
-        if (r.status === 410) throw new Error('This QR code has expired. Please generate a new one on your desktop.');
-        if (r.status === 409) throw new Error('This link has already been used.');
-        if (!r.ok) throw new Error('Invalid or unrecognised link.');
+        if (r.status === 410) throw new Error('Ten link wygasł. Poproś o nowy.');
+        if (r.status === 409) throw new Error('Ten link został już użyty.');
+        if (!r.ok) throw new Error('Nieprawidłowy lub nierozpoznany link.');
         return r.json();
       })
       .then(data => {
-        if (!data.user_id) throw new Error('Session response is incomplete. Please try scanning the QR code again.');
+        if (!data.user_id) throw new Error('Odpowiedź sesji jest niekompletna. Spróbuj ponownie.');
         setUserId(data.user_id);
         // Apply branding from the session response (inlined by backend)
         if (data.branding) {
@@ -526,7 +581,7 @@ const MobileVerificationPage: React.FC = () => {
         const isNetwork = e.message === 'Failed to fetch' || e.message === 'Load failed' || e.message.toLowerCase().includes('network');
         setError(
           isNetwork
-            ? 'Could not reach the verification server. Make sure your phone and computer are on the same Wi-Fi network, then scan the QR code again.'
+            ? 'Nie można połączyć się z serwerem weryfikacji. Sprawdź połączenie z internetem i spróbuj ponownie.'
             : e.message
         );
       })
@@ -569,7 +624,7 @@ const MobileVerificationPage: React.FC = () => {
       setLoading(false);
     } catch (err: any) {
       if (mountedRef.current) {
-        setError(err.message || 'Failed to start verification');
+        setError(err.message || 'Nie udało się rozpocząć weryfikacji');
         setLoading(false);
       }
     }
@@ -688,7 +743,7 @@ const MobileVerificationPage: React.FC = () => {
   // ── Poll front OCR ─────────────────────────────────────────────────────
   const pollFrontOCR = async (attempt: number) => {
     if (!verificationId || !token || !mountedRef.current) return;
-    if (attempt >= 60) { setStepError('OCR timed out. Please try again.'); return; }
+    if (attempt >= 60) { setStepError('Przekroczono czas odczytu. Spróbuj ponownie.'); return; }
     try {
       const data = await apiGet(`/api/v2/verify/${verificationId}/status`);
       if (!mountedRef.current) return;
@@ -706,7 +761,7 @@ const MobileVerificationPage: React.FC = () => {
   // ── Poll front OCR for back-skip modes (identity/passport — skip back doc) ──
   const pollFrontOCRForIdentity = async (attempt: number) => {
     if (!verificationId || !token || !mountedRef.current) return;
-    if (attempt >= 60) { setStepError('OCR timed out. Please try again.'); return; }
+    if (attempt >= 60) { setStepError('Przekroczono czas odczytu. Spróbuj ponownie.'); return; }
     try {
       const data = await apiGet(`/api/v2/verify/${verificationId}/status`);
       if (!mountedRef.current) return;
@@ -766,13 +821,24 @@ const MobileVerificationPage: React.FC = () => {
     }
   };
 
+  // ── Auto-scan: upload immediately once a photo is captured/selected ──────
+  // (no separate "Skanuj przód/tył" confirm tap)
+  useEffect(() => {
+    if (frontFile && screen === 'front' && !isProcessing && verificationId) uploadFront();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [frontFile]);
+  useEffect(() => {
+    if (backFile && screen === 'back' && !isProcessing && verificationId) uploadBack();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [backFile]);
+
   // ── Poll cross-validation ──────────────────────────────────────────────
   const pollCrossValidation = async (attempt: number) => {
     if (!verificationId || !token || !mountedRef.current) return;
-    if (attempt >= 60) { setStepError('Validation timed out. Please try again.'); return; }
+    if (attempt >= 60) { setStepError('Przekroczono czas weryfikacji. Spróbuj ponownie.'); return; }
 
     // Cycle checking messages
-    if (attempt === 0) setCheckingMsg('Verifying your document…');
+    if (attempt === 0) setCheckingMsg('Weryfikujemy Twój dokument…');
 
     try {
       const data = await apiGet(`/api/v2/verify/${verificationId}/status`);
@@ -815,7 +881,7 @@ const MobileVerificationPage: React.FC = () => {
   // Cycling messages for checking screen
   useEffect(() => {
     if (screen !== 'checking') return;
-    const msgs = ['Verifying your document…', 'Cross-checking details…', 'Almost there…'];
+    const msgs = ['Weryfikujemy Twój dokument…', 'Sprawdzamy zgodność danych…', 'Już prawie gotowe…'];
     let idx = 0;
     const iv = setInterval(() => {
       idx = (idx + 1) % msgs.length;
@@ -909,7 +975,7 @@ const MobileVerificationPage: React.FC = () => {
   const waitForFinalResult = async (attempt: number) => {
     if (!verificationId || !token || !mountedRef.current) return;
     if (attempt >= 60) {
-      if (mountedRef.current) setStepError('Verification is taking too long. Please close and try again.');
+      if (mountedRef.current) setStepError('Weryfikacja trwa zbyt długo. Zamknij i spróbuj ponownie.');
       return;
     }
     try {
@@ -1083,6 +1149,40 @@ const MobileVerificationPage: React.FC = () => {
     }
   };
 
+  // ── Retry ONLY the live capture (document scan preserved) ─────────────────
+  const handleRetryLiveness = async () => {
+    if (!verificationId || !token) return;
+    if (redirectTimerRef.current) { clearTimeout(redirectTimerRef.current); redirectTimerRef.current = null; }
+    setRetryProcessing(true);
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/v2/verify/${verificationId}/restart-liveness`, {
+        method: 'POST',
+        headers: { 'X-Handoff-Token': token },
+      });
+      if (!res.ok) {
+        // Backend decided the document stage must be redone — fall back to full restart.
+        if (res.status === 400) { await handleRetry(); return; }
+        const err = await res.json().catch(() => ({ message: 'Failed to restart' }));
+        throw new Error(err.message || 'Failed to restart liveness');
+      }
+      if (!mountedRef.current) return;
+      // Reset ONLY the live-capture state — keep the scanned document files.
+      if (selfiePreviewUrl) URL.revokeObjectURL(selfiePreviewUrl);
+      setSelfieFile(null);
+      setSelfiePreviewUrl(null);
+      setFinalResult(null);
+      setStepError(null);
+      setShowActiveLiveness(false);
+      setUseFallbackSelfie(false);
+      selfieMetadataRef.current = null;
+      setScreenIdx(SCREEN_IDX.live); // Jump straight to live capture
+    } catch (err: any) {
+      if (mountedRef.current) setStepError(err.message);
+    } finally {
+      if (mountedRef.current) setRetryProcessing(false);
+    }
+  };
+
   // ── Retry helper with exponential backoff ────────────────────────────────
   const patchWithRetry = async (url: string, body: object, maxRetries = 3): Promise<boolean> => {
     for (let i = 0; i < maxRetries; i++) {
@@ -1107,6 +1207,15 @@ const MobileVerificationPage: React.FC = () => {
     setFinalResult(data);
     setScreenIdx(SCREEN_IDX.done);
     const status = data.final_result ?? data.status;
+
+    // On failure/review, pull the full status so we can tell the user WHICH
+    // fields were unreadable (field-level hint on the result screen).
+    if ((status === 'failed' || status === 'manual_review') && verificationId && token && !data.cross_validation_results) {
+      fetch(`${API_BASE_URL}/api/v2/verify/${verificationId}/status`, { headers: { 'X-Handoff-Token': token } })
+        .then(r => (r.ok ? r.json() : null))
+        .then(s => { if (s && mountedRef.current) setFinalResult({ ...s, ...data }); })
+        .catch(() => { /* keep original data */ });
+    }
 
     // Start redirect timer immediately (don't block on handoff PATCH retries)
     if (redirectUrl) {
@@ -1171,7 +1280,7 @@ const MobileVerificationPage: React.FC = () => {
           <span style={{
             fontFamily: 'var(--mono)', fontSize: 12,
             color: 'var(--mid)', letterSpacing: '0.08em',
-          }}>Preparing your session...</span>
+          }}>Przygotowujemy Twoją sesję…</span>
         </div>
       </div>
     );
@@ -1181,7 +1290,7 @@ const MobileVerificationPage: React.FC = () => {
   if (error) {
     return (
       <div style={shellStyle}>
-        <style>{css}</style>
+        <style>{css}{pbThemeCss}</style>
         <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '0 32px', gap: 16, textAlign: 'center' }}>
           <div style={{
             width: 72, height: 72,
@@ -1191,7 +1300,7 @@ const MobileVerificationPage: React.FC = () => {
             fontSize: 32, color: 'var(--flag)',
           }}>!</div>
           <h2 style={{ fontFamily: 'var(--sans)', fontSize: 22, fontWeight: 700, letterSpacing: '-0.025em', lineHeight: 1.12 }}>
-            Unable to Load
+            Nie można wczytać
           </h2>
           <p style={{ fontFamily: 'var(--mono)', fontSize: 13, color: 'var(--mid)', lineHeight: 1.55 }}>
             {error}
@@ -1213,25 +1322,7 @@ const MobileVerificationPage: React.FC = () => {
         </div>
       )}
 
-      {/* Status bar */}
-      <div style={{
-        display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-        padding: '16px 24px 10px',
-        fontFamily: 'var(--mono)', fontSize: 11,
-      }}>
-        <span style={{ color: 'var(--mid)' }}>
-          {new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-        </span>
-        <span style={{ color: 'var(--accent)', letterSpacing: '0.1em', fontSize: 10, textTransform: 'uppercase' }}>
-          Secure Session
-        </span>
-        <span style={{ color: 'var(--mid)' }}>
-          {/* Signal dots */}
-          <span style={{ opacity: 1 }}>●</span>
-          <span style={{ opacity: 0.7 }}>●</span>
-          <span style={{ opacity: 0.4 }}>●</span>
-        </span>
-      </div>
+      <div style={{ height: 8 }} />
 
       {/* Step progress */}
       <StepTracker
@@ -1254,22 +1345,6 @@ const MobileVerificationPage: React.FC = () => {
         )}
       />
 
-      {/* Page Builder header (developer-configured title/subtitle) */}
-      {screen !== 'done' && (pageConfig?.headerTitle || pageConfig?.headerSubtitle) && (
-        <div style={{ padding: '18px 24px 0', textAlign: 'center' }}>
-          {pageConfig?.headerTitle && (
-            <h2 style={{ fontFamily: 'var(--sans)', fontSize: 20, fontWeight: 700, color: 'var(--ink)', margin: '0 0 4px', letterSpacing: '-0.01em' }}>
-              {pageConfig.headerTitle}
-            </h2>
-          )}
-          {pageConfig?.headerSubtitle && (
-            <p style={{ fontFamily: 'var(--sans)', fontSize: 13, color: 'var(--mid)', margin: 0, lineHeight: 1.5 }}>
-              {pageConfig.headerSubtitle}
-            </p>
-          )}
-        </div>
-      )}
-
       {/* Screen content */}
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', marginTop: 20 }}>
 
@@ -1278,47 +1353,22 @@ const MobileVerificationPage: React.FC = () => {
           <div key="front" className="mv-fade-up" style={screenStyle}>
             <AmbientGlow />
 
-            <span style={{
-              fontFamily: 'var(--mono)', fontSize: 10, fontWeight: 400,
-              textTransform: 'uppercase', letterSpacing: '0.12em', color: 'var(--accent)',
-              marginBottom: 8,
-            }}>{isAgeOnly ? 'Step 1 of 1 — Upload ID'
-              : isIdentity ? 'Step 1 of 4 — Front of ID'
-              : isDocumentOnly ? 'Step 1 of 4 — Front of ID'
-              : 'Step 1 of 5 — Front of ID'}</span>
-
-            <h1 style={{ fontSize: 26, fontWeight: 700, lineHeight: 1.12, letterSpacing: '-0.025em', marginBottom: 8 }}>
-              {isAgeOnly ? <>Upload your ID<br />to verify your age</> : <>Scan the front<br />of your ID</>}
+            <h1 style={{ fontSize: 22, fontWeight: 600, lineHeight: 1.15, letterSpacing: '-0.01em', marginBottom: 8 }}>
+              {isAgeOnly ? <>Prześlij dowód,<br />aby potwierdzić wiek</> : <>Zeskanuj przód<br />dowodu osobistego</>}
             </h1>
 
             <p style={{ fontSize: 13, fontWeight: 400, color: 'var(--mid)', lineHeight: 1.55, marginBottom: 16 }}>
               {isAgeOnly
-                ? `We'll check your date of birth to confirm you are ${ageThreshold ?? 18}+. No other data is stored.`
-                : 'Position your ID card and take a clear photo. Make sure all four corners are visible and the text is clear.'}
+                ? `Sprawdzimy Twoją datę urodzenia, aby potwierdzić, że masz ukończone ${ageThreshold ?? 18} lat. Żadne inne dane nie są zapisywane.`
+                : 'Ustaw dowód i zrób wyraźne zdjęcie. Upewnij się, że widać wszystkie cztery rogi, a tekst jest czytelny.'}
             </p>
 
-            {/* Document type selector */}
-            <div style={{ marginBottom: 14 }}>
-              <select
-                value={documentType}
-                onChange={e => setDocumentType(e.target.value)}
-                style={{
-                  width: '100%', padding: '10px 14px',
-                  border: '1px solid var(--rule)', background: 'var(--panel)',
-                  color: 'var(--ink)', fontFamily: 'var(--mono)',
-                  fontSize: 12, outline: 'none',
-                }}
-              >
-                <option value="national_id">National ID</option>
-                <option value="passport">Passport</option>
-                <option value="drivers_license">Driver's License</option>
-              </select>
-            </div>
+            {/* Tylko dowód osobisty — selektor typu dokumentu usunięty (documentType jest na stałe 'national_id') */}
 
-            <TipBar text="Good lighting · No glare · Hold steady" />
+            <TipBar text="Dobre światło · Bez odblasków · Trzymaj nieruchomo" />
 
             <div style={{ marginTop: 12 }} />
-            <IDViewfinder variant="front" processing={isProcessing} processingLabel="READING FRONT" previewUrl={frontPreviewUrl} />
+            <IDViewfinder variant="front" processing={isProcessing} processingLabel="ODCZYT PRZODU" previewUrl={frontPreviewUrl} />
 
             {/* Hidden file input (fallback when camera unsupported) */}
             <input type="file" accept="image/*" capture="environment" id="mv-front-upload" style={{ display: 'none' }}
@@ -1329,11 +1379,11 @@ const MobileVerificationPage: React.FC = () => {
                 onClick={() => cameraSupported ? openCamera('front') : document.getElementById('mv-front-upload')?.click()}
                 disabled={isProcessing}
               >
-                Take Photo of Front
+                Zrób zdjęcie przodu
               </PrimaryBtn>
             ) : (
               <PrimaryBtn onClick={uploadFront} disabled={isProcessing}>
-                {isProcessing ? 'Processing…' : 'Scan Front of ID'}
+                {isProcessing ? 'Przetwarzanie…' : 'Skanuj przód dowodu'}
               </PrimaryBtn>
             )}
 
@@ -1350,24 +1400,18 @@ const MobileVerificationPage: React.FC = () => {
           <div key="back" className="mv-fade-up" style={screenStyle}>
             <AmbientGlow />
 
-            <span style={{
-              fontFamily: 'var(--mono)', fontSize: 10,
-              textTransform: 'uppercase', letterSpacing: '0.12em', color: 'var(--accent)',
-              marginBottom: 8,
-            }}>{isDocumentOnly ? 'Step 2 of 4 — Back of ID' : 'Step 2 of 5 — Back of ID'}</span>
-
-            <h1 style={{ fontSize: 26, fontWeight: 700, lineHeight: 1.12, letterSpacing: '-0.025em', marginBottom: 8 }}>
-              Now flip it over<br />and scan the back
+            <h1 style={{ fontSize: 22, fontWeight: 600, lineHeight: 1.15, letterSpacing: '-0.01em', marginBottom: 8 }}>
+              Teraz odwróć dowód<br />i zeskanuj tył
             </h1>
 
             <p style={{ fontSize: 13, color: 'var(--mid)', lineHeight: 1.55, marginBottom: 16 }}>
-              Keep the same conditions — good lighting, flat surface. The barcode on the back must be fully visible.
+              Zachowaj te same warunki — dobre światło, płaska powierzchnia. Kod na tyle musi być w pełni widoczny.
             </p>
 
-            <TipBar text="Barcode must be unobstructed" />
+            <TipBar text="Kod kreskowy musi być w pełni widoczny" />
 
             <div style={{ marginTop: 12 }} />
-            <IDViewfinder variant="back" processing={isProcessing} processingLabel="READING BARCODE" previewUrl={backPreviewUrl} />
+            <IDViewfinder variant="back" processing={isProcessing} processingLabel="ODCZYT KODU" previewUrl={backPreviewUrl} />
 
             {/* Hidden file input (fallback when camera unsupported) */}
             <input type="file" accept="image/*" capture="environment" id="mv-back-upload" style={{ display: 'none' }}
@@ -1378,11 +1422,11 @@ const MobileVerificationPage: React.FC = () => {
                 onClick={() => cameraSupported ? openCamera('back') : document.getElementById('mv-back-upload')?.click()}
                 disabled={isProcessing}
               >
-                Take Photo of Back
+                Zrób zdjęcie tyłu
               </PrimaryBtn>
             ) : (
               <PrimaryBtn onClick={uploadBack} disabled={isProcessing}>
-                {isProcessing ? 'Processing…' : 'Scan Back of ID'}
+                {isProcessing ? 'Przetwarzanie…' : 'Skanuj tył dowodu'}
               </PrimaryBtn>
             )}
 
@@ -1401,15 +1445,6 @@ const MobileVerificationPage: React.FC = () => {
           }}>
             <AmbientGlow />
 
-            <span style={{
-              fontFamily: 'var(--mono)', fontSize: 10,
-              textTransform: 'uppercase', letterSpacing: '0.12em', color: 'var(--accent)',
-              marginBottom: 24,
-            }}>{isDocumentOnly
-              ? (skipBack ? 'Step 2 of 3 — Verification' : 'Step 3 of 4 — Verification')
-              : (isIdentity || skipBack) ? 'Step 2 of 4 — Verification'
-              : 'Step 3 of 5 — Verification'}</span>
-
             <div style={{
               width: 80, height: 80, border: '2px solid var(--rule)',
               borderTopColor: 'var(--accent)', borderRadius: '50%',
@@ -1422,10 +1457,10 @@ const MobileVerificationPage: React.FC = () => {
             <p style={{
               fontFamily: 'var(--mono)', fontSize: 11, color: 'var(--mid)',
               letterSpacing: '0.08em',
-            }}>This only takes a moment</p>
+            }}>To potrwa tylko chwilę</p>
 
             <div style={{ display: 'flex', gap: 8, marginTop: 24, flexWrap: 'wrap', justifyContent: 'center' }}>
-              {['Document read', 'Details matched', 'Security checks'].map(tag => (
+              {['Dokument odczytany', 'Dane zgodne', 'Kontrole bezpieczeństwa'].map(tag => (
                 <span key={tag} style={{
                   padding: '5px 10px',
                   background: 'var(--accent-soft)', border: '1px solid var(--rule)',
@@ -1448,29 +1483,23 @@ const MobileVerificationPage: React.FC = () => {
           <div key="live" className="mv-fade-up" style={screenStyle}>
             <AmbientGlow />
 
-            <span style={{
-              fontFamily: 'var(--mono)', fontSize: 10,
-              textTransform: 'uppercase', letterSpacing: '0.12em', color: 'var(--accent)',
-              marginBottom: 8,
-            }}>{(isIdentity || skipBack) ? 'Step 3 of 4 — Live Photo' : 'Step 4 of 5 — Live Photo'}</span>
-
             {/* Active liveness (primary path) */}
             {!useFallbackSelfie && !selfieFile && !showSelfieCamera ? (
               <>
-                <h1 style={{ fontSize: 26, fontWeight: 700, lineHeight: 1.12, letterSpacing: '-0.025em', marginBottom: 8 }}>
-                  Liveness check
+                <h1 style={{ fontSize: 22, fontWeight: 600, lineHeight: 1.15, letterSpacing: '-0.01em', marginBottom: 8 }}>
+                  Zdjęcie Twojej twarzy
                 </h1>
 
                 <p style={{ fontSize: 13, color: 'var(--mid)', lineHeight: 1.55, marginBottom: 12 }}>
-                  Follow the on-screen instructions — look at the camera and turn your head when prompted.
+                  Postępuj zgodnie z instrukcjami na ekranie — patrz w kamerę i obróć głowę, gdy pojawi się prośba.
                 </p>
 
                 {!showActiveLiveness ? (
                   <>
-                    <TipBar text="Remove glasses · Face well-lit · No hat" />
+                    <TipBar text="Zdejmij okulary · Dobre światło · Bez nakrycia głowy" />
                     <div style={{ marginTop: 14 }} />
                     <PrimaryBtn onClick={() => setShowActiveLiveness(true)} disabled={isProcessing}>
-                      Start Liveness Check
+                      Rozpocznij
                     </PrimaryBtn>
                   </>
                 ) : (
@@ -1487,12 +1516,12 @@ const MobileVerificationPage: React.FC = () => {
             ) : (
               /* Fallback: legacy selfie capture */
               <>
-                <h1 style={{ fontSize: 26, fontWeight: 700, lineHeight: 1.12, letterSpacing: '-0.025em', marginBottom: 8 }}>
-                  Take a quick<br />selfie
+                <h1 style={{ fontSize: 22, fontWeight: 600, lineHeight: 1.15, letterSpacing: '-0.01em', marginBottom: 8 }}>
+                  Zrób szybkie<br />selfie
                 </h1>
 
                 <p style={{ fontSize: 13, color: 'var(--mid)', lineHeight: 1.55, marginBottom: 12 }}>
-                  We need to confirm your identity matches your ID. Look directly at the camera in a well-lit area.
+                  Musimy potwierdzić, że Twoja twarz zgadza się z dowodem. Patrz prosto w kamerę w dobrze oświetlonym miejscu.
                 </p>
 
                 {/* Oval face viewfinder */}
@@ -1501,7 +1530,7 @@ const MobileVerificationPage: React.FC = () => {
                 {/* Liveness cues — hidden when processing */}
                 <LivenessCues hidden={isProcessing} />
 
-                <TipBar text="Remove glasses · Face well-lit · No hat" />
+                <TipBar text="Zdejmij okulary · Dobre światło · Bez nakrycia głowy" />
 
                 <div style={{ marginTop: 14 }} />
 
@@ -1514,11 +1543,11 @@ const MobileVerificationPage: React.FC = () => {
                     onClick={() => cameraSupported ? setShowSelfieCamera(true) : document.getElementById('mv-selfie-upload')?.click()}
                     disabled={isProcessing}
                   >
-                    Take Selfie
+                    Zrób selfie
                   </PrimaryBtn>
                 ) : (
                   <PrimaryBtn onClick={uploadSelfie} disabled={isProcessing}>
-                    {isProcessing ? 'Processing…' : 'Submit Selfie'}
+                    {isProcessing ? 'Przetwarzanie…' : 'Wyślij selfie'}
                   </PrimaryBtn>
                 )}
               </>
@@ -1603,7 +1632,7 @@ const MobileVerificationPage: React.FC = () => {
                 <PrimaryBtn onClick={handleVoiceStopRecording}>Stop Recording</PrimaryBtn>
               )}
               {voiceHasRecording && !voiceIsRecording && !isProcessing && (
-                <PrimaryBtn onClick={handleVoiceSubmit}>Submit Voice</PrimaryBtn>
+                <PrimaryBtn onClick={handleVoiceSubmit}>Wyślij nagranie</PrimaryBtn>
               )}
               {isProcessing && <div style={{ textAlign: 'center', padding: 8 }}><div className="mv-spinner" /></div>}
             </div>
@@ -1611,7 +1640,7 @@ const MobileVerificationPage: React.FC = () => {
             {stepError && (
               <div style={{ marginTop: 8, display: 'flex', flexDirection: 'column', gap: 8 }}>
                 <p style={{ fontSize: 11, color: '#ef4444', fontFamily: 'var(--mono)' }}>{stepError}</p>
-                <PrimaryBtn onClick={resetVoiceState}>Try Again</PrimaryBtn>
+                <PrimaryBtn onClick={resetVoiceState}>Nagraj ponownie</PrimaryBtn>
               </div>
             )}
             {voiceChallengeDigits && voiceExpiresIn !== null && voiceExpiresIn <= 0 && !stepError && (
@@ -1652,25 +1681,25 @@ const MobileVerificationPage: React.FC = () => {
                 // Success state — the premium completion screen
                 const checklist = isAgeOnly
                   ? [
-                      'Document scanned',
-                      `Age requirement (${finalResult.age_verification?.age_threshold ?? ageThreshold ?? 18}+) met`,
+                      'Dokument zeskanowany',
+                      `Spełniono wymóg wieku (${finalResult.age_verification?.age_threshold ?? ageThreshold ?? 18}+)`,
                     ]
                   : isDocumentOnly
                   ? [
-                      'Identity document verified',
-                      'Document details confirmed',
+                      'Dokument tożsamości zweryfikowany',
+                      'Dane dokumentu potwierdzone',
                     ]
                   : isIdentity
                   ? [
-                      'Identity document verified',
-                      'Liveness check passed',
-                      'Face matched successfully',
+                      'Dokument tożsamości zweryfikowany',
+                      'Test żywotności zaliczony',
+                      'Twarz dopasowana',
                     ]
                   : [
-                      'Identity document verified',
-                      'Document details confirmed',
-                      'Liveness check passed',
-                      'Face matched successfully',
+                      'Dokument tożsamości zweryfikowany',
+                      'Dane dokumentu potwierdzone',
+                      'Test żywotności zaliczony',
+                      'Twarz dopasowana',
                     ];
                 return (
                   <>
@@ -1687,22 +1716,22 @@ const MobileVerificationPage: React.FC = () => {
                       fontFamily: 'var(--mono)', fontSize: 10,
                       textTransform: 'uppercase', letterSpacing: '0.12em', color: 'var(--accent)',
                       marginBottom: 8,
-                    }}>{isAgeOnly ? 'Age verified' : isDocumentOnly ? 'Document verified' : 'Verification complete'}</span>
+                    }}>{isAgeOnly ? 'Wiek potwierdzony' : isDocumentOnly ? 'Dokument zweryfikowany' : 'Weryfikacja zakończona'}</span>
 
-                    <h1 style={{ fontSize: 28, fontWeight: 700, letterSpacing: '-0.025em', marginBottom: 8 }}>
-                      {pageConfig?.completionTitle || "You're all set"}
+                    <h1 style={{ fontSize: 26, fontWeight: 700, letterSpacing: '-0.02em', marginBottom: 8 }}>
+                      {pageConfig?.completionTitle || 'Gotowe!'}
                     </h1>
 
                     <p style={{ fontSize: 13, color: 'var(--mid)', lineHeight: 1.55, marginBottom: 24 }}>
                       {redirectUrl
-                        ? 'Verification complete. Redirecting you back…'
+                        ? 'Weryfikacja zakończona. Za chwilę wrócisz…'
                         : pageConfig?.completionMessage
                         ? pageConfig.completionMessage
                         : isAgeOnly
-                        ? 'Your age has been verified. You can close this tab and return to your desktop.'
+                        ? 'Twój wiek został potwierdzony. Możesz zamknąć tę kartę i wrócić do aplikacji.'
                         : isDocumentOnly
-                        ? 'Your document has been verified. You can close this tab and return to your desktop.'
-                        : 'Your identity has been verified. You can close this tab and return to your desktop.'}
+                        ? 'Twój dokument został zweryfikowany. Możesz zamknąć tę kartę i wrócić do aplikacji.'
+                        : 'Twoja tożsamość została zweryfikowana. Możesz zamknąć tę kartę i wrócić do aplikacji.'}
                     </p>
 
                     {/* Checklist */}
@@ -1753,24 +1782,60 @@ const MobileVerificationPage: React.FC = () => {
                     {isFailed ? '✕' : '?'}
                   </div>
 
-                  <h1 style={{ fontSize: 24, fontWeight: 700, letterSpacing: '-0.025em', marginBottom: 8 }}>
+                  <h1 style={{ fontSize: 22, fontWeight: 600, letterSpacing: '-0.01em', marginBottom: 8 }}>
                     {isFailed
-                      ? isAgeOnly ? 'Age Verification Failed' : isDocumentOnly ? 'Document Verification Failed' : 'Verification Failed'
-                      : 'Under Review'}
+                      ? isAgeOnly ? 'Weryfikacja wieku nieudana' : isDocumentOnly ? 'Weryfikacja dokumentu nieudana' : 'Weryfikacja nieudana'
+                      : 'W trakcie przeglądu'}
                   </h1>
 
                   <p style={{ fontSize: 13, color: 'var(--mid)', lineHeight: 1.55, marginBottom: 16 }}>
                     {isFailed
                       ? isAgeOnly
-                        ? (finalResult.message || 'Age verification could not be completed.')
-                        : 'We were unable to verify your identity. Please return to your desktop to see details.'
-                      : 'Your verification is being reviewed. You will be notified of the result.'}
+                        ? (finalResult.message || 'Nie udało się zweryfikować wieku.')
+                        : 'Nie udało się zweryfikować Twojej tożsamości. Spróbuj ponownie z lepszym zdjęciem.'
+                      : 'Twoja weryfikacja jest sprawdzana. Powiadomimy Cię o wyniku.'}
                   </p>
 
-                  {isFailed && finalResult.retry_available !== false && (
+                  {(() => {
+                    const hint = isFailed ? getFailureHint(finalResult) : null;
+                    return hint ? (
+                      <div style={{
+                        width: '100%', maxWidth: 340, marginBottom: 16,
+                        padding: '12px 14px', borderRadius: 10, textAlign: 'left',
+                        background: 'var(--accent-soft)', border: '1px solid var(--rule)',
+                      }}>
+                        <div style={{ fontFamily: 'var(--sans)', fontSize: 11, fontWeight: 700, color: 'var(--accent-ink)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 4 }}>
+                          Co poprawić
+                        </div>
+                        <div style={{ fontFamily: 'var(--sans)', fontSize: 13, color: 'var(--ink)', lineHeight: 1.5 }}>
+                          {hint}
+                        </div>
+                      </div>
+                    ) : null;
+                  })()}
+
+                  {isFailed && finalResult.retry_available !== false && isLivenessStageFailure(finalResult) && (
+                    <div style={{ marginTop: 16, width: '100%', maxWidth: 320 }}>
+                      <PrimaryBtn onClick={handleRetryLiveness} disabled={retryProcessing}>
+                        {retryProcessing ? 'Ponawianie…' : 'Powtórz zdjęcie twarzy'}
+                      </PrimaryBtn>
+                      <button
+                        onClick={handleRetry}
+                        disabled={retryProcessing}
+                        style={{
+                          marginTop: 10, width: '100%', background: 'none', border: 'none',
+                          color: 'var(--mid)', fontFamily: 'var(--sans)', fontSize: 12,
+                          textDecoration: 'underline', cursor: retryProcessing ? 'default' : 'pointer',
+                        }}
+                      >
+                        Zacznij od nowa (skan dowodu)
+                      </button>
+                    </div>
+                  )}
+                  {isFailed && finalResult.retry_available !== false && !isLivenessStageFailure(finalResult) && (
                     <div style={{ marginTop: 16, width: '100%', maxWidth: 320 }}>
                       <PrimaryBtn onClick={handleRetry} disabled={retryProcessing}>
-                        {retryProcessing ? 'Restarting…' : 'Try Again'}
+                        {retryProcessing ? 'Ponawianie…' : 'Spróbuj ponownie'}
                       </PrimaryBtn>
                     </div>
                   )}
@@ -1779,7 +1844,7 @@ const MobileVerificationPage: React.FC = () => {
                       marginTop: 16, fontSize: 11, color: 'var(--flag)',
                       fontFamily: 'var(--mono)',
                     }}>
-                      Maximum retry attempts reached.
+                      Osiągnięto maksymalną liczbę prób.
                     </p>
                   )}
 
@@ -1790,13 +1855,13 @@ const MobileVerificationPage: React.FC = () => {
                       background: 'var(--flag-soft)', border: '1px solid var(--rule)',
                       padding: '8px 12px',
                     }}>
-                      Note: We couldn't notify your desktop automatically. Please refresh it to see your result.
+                      Uwaga: nie udało się automatycznie powiadomić Twojego urządzenia. Odśwież je, aby zobaczyć wynik.
                     </p>
                   )}
 
                   {redirectUrl && (
                     <p style={{ marginTop: 16, fontFamily: 'var(--mono)', fontSize: 11, color: 'var(--mid)', letterSpacing: '0.04em' }}>
-                      Redirecting in 3 seconds…
+                      Przekierowanie za 3 sekundy…
                     </p>
                   )}
                 </>

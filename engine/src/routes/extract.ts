@@ -124,30 +124,65 @@ router.post('/front', upload.single('file'), async (req: Request, res: Response)
         }
       }
 
-      // Document number: must match Polish format 3 letters + 6 digits (e.g. DFF362754)
-      // Override extractor result if it doesn't match (e.g. "cardPI", "cardPL")
+      // Document number: Polish format = 3 letters + 6 digits (e.g. DFF362754).
+      // Override extractor result if it doesn't match (e.g. "cardPI", "card0D").
+      // Tolerant to an optional separator and common OCR digit confusions in the
+      // 6-digit region (O→0, I/L→1, S→5, B→8, Z→2, G→6), since the front photo
+      // is often noisier than the back barcode.
       const plDocRegex = /\b([A-Z]{3}\d{6})\b/;
-      const currentDocNum = ocrData.document_number || '';
+      let currentDocNum = ocrData.document_number || '';
+      // The PŁEĆ/SEX marker (M = mężczyzna, K = kobieta) sits right after the
+      // number on the card; OCR may glue it on (e.g. "DFF362754M"). Strip it,
+      // and capture sex (normalised to MRZ M/F) if not already known.
+      const gluedSex = currentDocNum.match(/^([A-Z]{3}\d{6})([MKF])$/);
+      if (gluedSex) {
+        currentDocNum = gluedSex[1];
+        ocrData.document_number = gluedSex[1];
+        if (!ocrData.sex) ocrData.sex = gluedSex[2] === 'K' ? 'F' : gluedSex[2];
+      }
+      // Sex from the raw text ("…SEX … DFF362754 M") if still unknown.
+      if (!ocrData.sex) {
+        const sexM = raw.match(/[A-Z]{3}\d{6}\s+([MK])\b/);
+        if (sexM) ocrData.sex = sexM[1] === 'K' ? 'F' : sexM[1];
+      }
       if (!plDocRegex.test(currentDocNum) && documentType !== 'drivers_license') {
-        const m = raw.match(plDocRegex);
-        if (m) {
-          ocrData.document_number = m[1];
+        let found = '';
+        const strict = raw.match(plDocRegex);
+        if (strict) {
+          found = strict[1];
+        } else {
+          const loose = raw.replace(/[ \t]+/g, ' ').match(/\b([A-Z]{3})[ .·]?([0-9OILSBZG]{6})\b/);
+          if (loose) {
+            const digits = loose[2].toUpperCase()
+              .replace(/O/g, '0').replace(/[IL]/g, '1').replace(/S/g, '5')
+              .replace(/B/g, '8').replace(/Z/g, '2').replace(/G/g, '6');
+            if (/^\d{6}$/.test(digits)) found = loose[1] + digits;
+          }
+        }
+        if (found) {
+          ocrData.document_number = found;
           ocrData.confidence_scores = ocrData.confidence_scores || {};
-          ocrData.confidence_scores.document_number = 0.88;
-          logger.info('PL fallback: extracted document_number', { document_number: m[1], replaced: currentDocNum });
+          ocrData.confidence_scores.document_number = 0.85;
+          logger.info('PL fallback: extracted document_number', { document_number: found, replaced: currentDocNum });
         }
       }
 
-      // Full name: line after NAZWISKO/ SURNAME and IMIONA/ GIVEN NAMES
-      if (!ocrData.name) {
-        const surnameMatch = raw.match(/(?:NAZWISKO|SURNAME)[^\n]*\n([A-Z][A-Z\s\-ŁÓĘĄŚŹŻĆŃ]+)/i);
-        const givenMatch = raw.match(/(?:IMIONA|GIVEN\s*NAMES)[^\n]*\n([A-Z][A-Z\s\-ŁÓĘĄŚŹŻĆŃ]+)/i);
-        if (surnameMatch || givenMatch) {
-          const surname = surnameMatch ? surnameMatch[1].trim() : '';
-          const given = givenMatch ? givenMatch[1].trim() : '';
+      // Full name: line after NAZWISKO/SURNAME + IMIONA/GIVEN NAMES.
+      // Fuzzy labels (OCR garbles them, e.g. "GIVEN INAMES", "NAZWISK0") and
+      // single-line capture (no newline in the value). Re-run if the current
+      // name is missing or looks invalid (contains digits / too short).
+      const nameLooksBad = !ocrData.name || /\d/.test(ocrData.name) || ocrData.name.trim().length < 3;
+      if (nameLooksBad) {
+        const NAME_CHARS = "[A-ZŁÓĘĄŚŹŻĆŃ][A-ZŁÓĘĄŚŹŻĆŃ \\-]{1,30}";
+        const surnameMatch = raw.match(new RegExp(`(?:NAZWIS[KO0]+O?|S[U0]RNAM[EF]?)[^\\n]*\\n\\s*(${NAME_CHARS})`, 'i'));
+        const givenMatch = raw.match(new RegExp(`(?:IMION[AY]?|GIVEN[ \\tI]*NAMES?)[^\\n]*\\n\\s*(${NAME_CHARS})`, 'i'));
+        const clean = (s: string) => s.replace(/\s{2,}/g, ' ').trim();
+        const surname = surnameMatch ? clean(surnameMatch[1]) : '';
+        const given = givenMatch ? clean(givenMatch[1]) : '';
+        if (surname || given) {
           ocrData.name = [given, surname].filter(Boolean).join(' ');
           ocrData.confidence_scores = ocrData.confidence_scores || {};
-          ocrData.confidence_scores.name = 0.88;
+          ocrData.confidence_scores.name = 0.85;
           logger.info('PL fallback: extracted name', { name: ocrData.name });
         }
       }

@@ -71,13 +71,13 @@ function pickRandomDirection(): ChallengeDirection {
 
 function getInstructionForPhase(phase: LivenessPhase, direction: ChallengeDirection): string {
   switch (phase) {
-    case 'ready': return 'Position your face in the oval';
-    case 'turn': return direction === 'left' ? 'Slowly turn your head left' : 'Slowly turn your head right';
-    case 'return_center': return 'Now look straight ahead';
-    case 'capturing': return 'Hold still — capturing...';
-    case 'completed': return 'Liveness check passed!';
-    case 'failed': return 'Liveness check failed. Tap to retry.';
-    case 'fallback': return 'Camera unavailable. Using standard capture.';
+    case 'ready': return 'Umieść twarz w owalu';
+    case 'turn': return direction === 'left' ? 'Powoli obróć głowę w lewo' : 'Powoli obróć głowę w prawo';
+    case 'return_center': return 'Teraz patrz prosto przed siebie';
+    case 'capturing': return 'Nie ruszaj się — zapisuję…';
+    case 'completed': return 'Test żywotności zaliczony!';
+    case 'failed': return 'Test żywotności nieudany. Dotknij, aby ponowić.';
+    case 'fallback': return 'Kamera niedostępna. Używam standardowego trybu.';
     default: return '';
   }
 }

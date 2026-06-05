@@ -170,7 +170,7 @@ describe('HeadTurnVerifier', () => {
         makeFaceDetection({ yaw: 0 }), // turn1_peak
         makeFaceDetection({ yaw: 0 }), // turn1_return
         makeFaceDetection({ yaw: 0 }), // turn_start
-        makeFaceDetection({ yaw: 5 }), // turn_peak — only 5 degrees (positive = left, but insufficient)
+        makeFaceDetection({ yaw: 3 }), // turn_peak — only 3 degrees (positive = left, but below MIN_YAW_DELTA=5)
         makeFaceDetection({ yaw: 0 }), // turn_return
       ];
 
@@ -178,7 +178,7 @@ describe('HeadTurnVerifier', () => {
       const result = await verifyHeadTurnLiveness(makeMetadata(), faceService);
 
       expect(result.checks.head_turn_detected.passed).toBe(false);
-      expect(result.checks.head_turn_detected.detail).toContain('5.0');
+      expect(result.checks.head_turn_detected.detail).toContain('3.0');
     });
   });
 
