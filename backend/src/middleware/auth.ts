@@ -170,12 +170,14 @@ export const authenticateHandoffToken = catchAsync(async (req: Request, res: Res
     // lifecycle (desktop notification), not authorization. Rejecting 'completed'
     // would cause a race condition when the mobile's PATCH /complete fires while
     // a polling API call is still in-flight.
-    // 'failed' sessions are only allowed for the restart endpoint so the mobile
-    // user can retry after a failed verification. All other endpoints reject it.
+    // 'failed' sessions are only allowed for the restart endpoints (full restart
+    // and liveness-only retry) so the mobile user can retry after a failed
+    // verification. All other endpoints reject it.
+    const isRestartPath = req.path.endsWith('/restart') || req.path.endsWith('/restart-liveness');
     if (session.status === 'expired') {
       throw new AuthenticationError('Handoff session is no longer active');
     }
-    if (session.status === 'failed' && !req.path.endsWith('/restart')) {
+    if (session.status === 'failed' && !isRestartPath) {
       throw new AuthenticationError('Handoff session is no longer active');
     }
 
