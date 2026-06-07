@@ -234,7 +234,14 @@ export function ActiveLivenessCapture({
     onFallback,
   });
 
-  // ── Phase transition cues: voice (all platforms incl. iOS) + haptics (Android) ──
+  // Track the current direction in a ref so the phase-cue effect can read it
+  // without depending on it (direction is updated mid-'return_center' to set up
+  // the next turn — depending on it would re-fire the "wróć na środek" prompt).
+  const directionRef = useRef(direction);
+  useEffect(() => { directionRef.current = direction; }, [direction]);
+
+  // ── Phase transition cues: voice (all platforms incl. iOS) + haptics (Android).
+  //    Fires ONCE per phase change — deps are [phase] only, on purpose. ──
   useEffect(() => {
     // Haptics — Android only; iOS Safari has no Vibration API (silent no-op there).
     const vib = typeof navigator !== 'undefined' && navigator.vibrate
@@ -242,7 +249,7 @@ export function ActiveLivenessCapture({
 
     if (phase === 'turn') {
       vib?.(45);
-      const dir = direction === 'left' ? 'w lewo' : 'w prawo';
+      const dir = directionRef.current === 'left' ? 'w lewo' : 'w prawo';
       // Speak only the current action — no countdown (the visual ring shows time).
       speak(`Obróć głowę ${dir} i trzymaj.`);
     } else if (phase === 'return_center') {
@@ -255,7 +262,7 @@ export function ActiveLivenessCapture({
       vib?.(140);
       speak('Nie udało się. Spróbuj ponownie.');
     }
-  }, [phase, turnNumber, direction, speak]);
+  }, [phase, speak]);
 
   // ── Pre-camera intro screen — gates getUserMedia behind an explicit user gesture ──
   if (!cameraRequested) {
