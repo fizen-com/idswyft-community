@@ -113,6 +113,17 @@ export function ActiveLivenessCapture({
   // Stop any in-flight speech when the component unmounts.
   useEffect(() => () => { try { window.speechSynthesis?.cancel(); } catch { /* noop */ } }, []);
 
+  // Preload TTS voices (getVoices() is async on Android/Chrome — empty until the
+  // 'voiceschanged' event fires; without this the first prompt can be silent).
+  useEffect(() => {
+    const synth = window.speechSynthesis;
+    if (!synth) return;
+    const load = () => { try { synth.getVoices(); } catch { /* noop */ } };
+    load();
+    synth.addEventListener?.('voiceschanged', load);
+    return () => synth.removeEventListener?.('voiceschanged', load);
+  }, []);
+
   // Request camera access. CRITICAL: this must be invoked synchronously
   // from a user-gesture handler (button onClick) — iOS Safari rejects
   // getUserMedia calls that happen after any `await` in an async handler
@@ -195,17 +206,35 @@ export function ActiveLivenessCapture({
       });
   }, [onFallback, stopStream]);
 
-  // ── Voice guidance (Web Speech API — works on iOS Safari, unlike vibrate) ──
+  // ── Voice guidance (Web Speech API — works on iOS Safari + Android Chrome) ──
   const speak = useCallback((text: string) => {
     try {
       const synth = window.speechSynthesis;
       if (!synth) return;
-      synth.cancel(); // interrupt any in-flight utterance so prompts stay in sync
-      const u = new SpeechSynthesisUtterance(text);
-      u.lang = 'pl-PL';
-      u.rate = 1.0;
-      u.pitch = 1.0;
-      synth.speak(u);
+
+      const utter = () => {
+        const u = new SpeechSynthesisUtterance(text);
+        u.lang = 'pl-PL';
+        u.rate = 1.0;
+        u.pitch = 1.0;
+        // Prefer a Polish voice if the device has one; else any voice (Android
+        // can refuse to speak an utterance whose lang has no matching voice).
+        const voices = synth.getVoices();
+        const pl = voices.find(v => v.lang?.toLowerCase().startsWith('pl'));
+        if (pl) u.voice = pl;
+        synth.speak(u);
+        // Android Chrome sometimes leaves the queue paused — nudge it.
+        synth.resume();
+      };
+
+      // Cancelling immediately before speak() can drop the utterance on Android
+      // Chrome. Cancel, then speak on the next tick to avoid the race.
+      if (synth.speaking || synth.pending) {
+        synth.cancel();
+        setTimeout(utter, 60);
+      } else {
+        utter();
+      }
     } catch { /* speech not supported — silent */ }
   }, []);
 
