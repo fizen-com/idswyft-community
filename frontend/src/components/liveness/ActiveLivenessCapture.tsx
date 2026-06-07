@@ -243,11 +243,11 @@ export function ActiveLivenessCapture({
     if (phase === 'turn') {
       vib?.(45);
       const dir = direction === 'left' ? 'w lewo' : 'w prawo';
-      // Direction + spoken countdown — you can't read the screen while turned.
-      speak(`Obróć głowę ${dir}. Trzymaj. Trzy, dwa, jeden.`);
+      // Speak only the current action — no countdown (the visual ring shows time).
+      speak(`Obróć głowę ${dir} i trzymaj.`);
     } else if (phase === 'return_center') {
       vib?.(45);
-      speak('Wróć na środek. Trzy, dwa, jeden.');
+      speak('Wróć na środek.');
     } else if (phase === 'completed') {
       vib?.([30, 50, 30]);
       speak('Gotowe.');
@@ -283,6 +283,9 @@ export function ActiveLivenessCapture({
             Użyjemy przedniej kamery, by potwierdzić, że to naprawdę Ty — obraz nie
             jest zapisywany jako nagranie.
           </p>
+          <div className="lv-sound-note">
+            🔊 Włącz dźwięk i wyłącz tryb cichy — będziemy mówić, co robić.
+          </div>
           <button onClick={requestCamera} className="lv-btn-primary">
             Włącz kamerę
           </button>
@@ -562,6 +565,16 @@ const LIVENESS_CSS = `
   font-family: var(--sans);
   font-size: 14px; line-height: 1.5;
   color: var(--mid);
+}
+.lv-sound-note {
+  max-width: 340px;
+  padding: 10px 14px;
+  border: 1px solid var(--rule);
+  background: var(--accent-soft, rgba(0,212,180,0.08));
+  border-radius: 8px;
+  font-family: var(--sans);
+  font-size: 12.5px; line-height: 1.45;
+  color: var(--ink);
 }
 .lv-btn-primary {
   margin-top: 10px;
