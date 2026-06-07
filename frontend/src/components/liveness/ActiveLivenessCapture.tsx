@@ -110,6 +110,9 @@ export function ActiveLivenessCapture({
 
   useEffect(() => stopStream, [stopStream]);
 
+  // Stop any in-flight speech when the component unmounts.
+  useEffect(() => () => { try { window.speechSynthesis?.cancel(); } catch { /* noop */ } }, []);
+
   // Request camera access. CRITICAL: this must be invoked synchronously
   // from a user-gesture handler (button onClick) — iOS Safari rejects
   // getUserMedia calls that happen after any `await` in an async handler
@@ -120,6 +123,17 @@ export function ActiveLivenessCapture({
     setCameraError(null);
     setCameraRequested(true);
     setStreamReady(false);
+
+    // Prime speech synthesis within this user gesture so iOS Safari will allow
+    // the later (programmatic) voice prompts during the challenge.
+    try {
+      const synth = window.speechSynthesis;
+      if (synth) {
+        const warm = new SpeechSynthesisUtterance(' ');
+        warm.volume = 0; warm.lang = 'pl-PL';
+        synth.speak(warm);
+      }
+    } catch { /* no speech support — silent */ }
 
     // Synchronous getUserMedia call — no awaited code can run before this line
     // when this function is invoked from a button onClick.
@@ -181,6 +195,20 @@ export function ActiveLivenessCapture({
       });
   }, [onFallback, stopStream]);
 
+  // ── Voice guidance (Web Speech API — works on iOS Safari, unlike vibrate) ──
+  const speak = useCallback((text: string) => {
+    try {
+      const synth = window.speechSynthesis;
+      if (!synth) return;
+      synth.cancel(); // interrupt any in-flight utterance so prompts stay in sync
+      const u = new SpeechSynthesisUtterance(text);
+      u.lang = 'pl-PL';
+      u.rate = 1.0;
+      u.pitch = 1.0;
+      synth.speak(u);
+    } catch { /* speech not supported — silent */ }
+  }, []);
+
   const handleComplete = useCallback(
     (blob: Blob, metadata: LivenessMetadata) => {
       stopStream();
@@ -206,16 +234,28 @@ export function ActiveLivenessCapture({
     onFallback,
   });
 
-  // ── Haptic feedback on phase transitions (where supported) ──
+  // ── Phase transition cues: voice (all platforms incl. iOS) + haptics (Android) ──
   useEffect(() => {
+    // Haptics — Android only; iOS Safari has no Vibration API (silent no-op there).
     const vib = typeof navigator !== 'undefined' && navigator.vibrate
       ? navigator.vibrate.bind(navigator) : null;
-    if (!vib) return;
-    if (phase === 'turn') vib(45);              // cue: start turning
-    else if (phase === 'return_center') vib(45); // cue: return to center
-    else if (phase === 'completed') vib([30, 50, 30]);
-    else if (phase === 'failed') vib(140);
-  }, [phase, turnNumber]);
+
+    if (phase === 'turn') {
+      vib?.(45);
+      const dir = direction === 'left' ? 'w lewo' : 'w prawo';
+      // Direction + spoken countdown — you can't read the screen while turned.
+      speak(`Obróć głowę ${dir}. Trzymaj. Trzy, dwa, jeden.`);
+    } else if (phase === 'return_center') {
+      vib?.(45);
+      speak('Wróć na środek. Trzy, dwa, jeden.');
+    } else if (phase === 'completed') {
+      vib?.([30, 50, 30]);
+      speak('Gotowe.');
+    } else if (phase === 'failed') {
+      vib?.(140);
+      speak('Nie udało się. Spróbuj ponownie.');
+    }
+  }, [phase, turnNumber, direction, speak]);
 
   // ── Pre-camera intro screen — gates getUserMedia behind an explicit user gesture ──
   if (!cameraRequested) {
