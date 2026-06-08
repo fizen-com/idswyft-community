@@ -156,7 +156,7 @@ export function useActiveLiveness(options: UseActiveLivenessOptions): UseActiveL
       setCountdown((c) => Math.max(0, c - 1));
     }, 1000);
     return () => clearInterval(id);
-  }, [phase, turnNumber]);
+  }, [phase]);
 
   // ── Smooth hold-progress (0→1) for the face ring — fills as the user holds. ──
   useEffect(() => {
@@ -173,7 +173,7 @@ export function useActiveLiveness(options: UseActiveLivenessOptions): UseActiveL
       if (p >= 1) clearInterval(id);
     }, 50);
     return () => clearInterval(id);
-  }, [phase, turnNumber]);
+  }, [phase]);
 
   // ── Virtual camera detection on mount ──
   useEffect(() => {
