@@ -251,7 +251,7 @@ export function ActiveLivenessCapture({
     direction,
     instruction,
     progress,
-    countdown,
+    holdProgress,
     turnNumber,
     error,
     retry,
@@ -464,6 +464,24 @@ export function ActiveLivenessCapture({
             strokeWidth={2.5}
             className={`lv-oval lv-oval--${borderState}`}
           />
+          {/* Hold-progress ring — fills around the face while you hold the pose */}
+          {challengeActive && (
+            <ellipse
+              cx={videoDims.w / 2}
+              cy={videoDims.h * 0.42}
+              rx={videoDims.w * 0.27}
+              ry={videoDims.h * 0.265}
+              fill="none"
+              stroke={holdProgress > 0.8 ? '#7CFFB2' : '#00ffdf'}
+              strokeWidth={7}
+              strokeLinecap="round"
+              pathLength={1}
+              strokeDasharray={1}
+              strokeDashoffset={1 - Math.max(0, Math.min(1, holdProgress))}
+              transform={`rotate(-90 ${videoDims.w / 2} ${videoDims.h * 0.42})`}
+              style={{ transition: 'stroke-dashoffset 0.08s linear, stroke 0.3s', filter: 'drop-shadow(0 0 8px rgba(0,255,223,0.55))' }}
+            />
+          )}
         </svg>
 
         {/* Scan line */}
@@ -496,27 +514,6 @@ export function ActiveLivenessCapture({
               </svg>
             </div>
             <span className="lv-arrow-label">{direction === 'left' ? 'LEWO' : 'PRAWO'}</span>
-          </div>
-        )}
-
-        {/* Progress ring (top-right) with hold countdown in the centre */}
-        {challengeActive && (
-          <div style={{ position: 'absolute', top: 12, right: 12, zIndex: 5, width: 56, height: 56 }}>
-            <svg width="56" height="56" viewBox="0 0 56 56" style={{ position: 'absolute', inset: 0 }}>
-              <circle cx="28" cy="28" r="24" fill="rgba(4,13,26,0.45)" stroke="rgba(0,212,180,0.12)" strokeWidth={3} />
-              <circle
-                cx="28" cy="28" r="24"
-                fill="none"
-                stroke={progress > 0.75 ? '#ffb547' : '#00d4b4'}
-                strokeWidth={3}
-                strokeLinecap="round"
-                strokeDasharray={`${2 * Math.PI * 24}`}
-                strokeDashoffset={`${2 * Math.PI * 24 * (1 - Math.max(0, Math.min(1, progress)))}`}
-                transform="rotate(-90 28 28)"
-                style={{ transition: 'stroke-dashoffset 0.1s linear, stroke 0.3s' }}
-              />
-            </svg>
-            <span className="lv-countdown">{countdown > 0 ? countdown : ''}</span>
           </div>
         )}
 

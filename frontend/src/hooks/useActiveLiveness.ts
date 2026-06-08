@@ -51,6 +51,8 @@ export interface UseActiveLivenessReturn {
   progress: number;
   /** Seconds remaining in the current hold phase (turn / return_center), else 0. */
   countdown: number;
+  /** Smooth 0→1 fill progress through the current hold phase (for the face ring). */
+  holdProgress: number;
   /** Which scored turn we're on (1 or 2) — for "Obrót X z 2" labelling. */
   turnNumber: number;
   faceDetected: boolean;
@@ -124,6 +126,7 @@ export function useActiveLiveness(options: UseActiveLivenessOptions): UseActiveL
   const [direction, setDirection] = useState<ChallengeDirection>(pickRandomDirection);
   const [progress, setProgress] = useState(0);
   const [countdown, setCountdown] = useState(0);
+  const [holdProgress, setHoldProgress] = useState(0);
   const [turnNumber, setTurnNumber] = useState(1);
   const [error, setError] = useState<string | null>(null);
 
@@ -152,6 +155,23 @@ export function useActiveLiveness(options: UseActiveLivenessOptions): UseActiveL
     const id = setInterval(() => {
       setCountdown((c) => Math.max(0, c - 1));
     }, 1000);
+    return () => clearInterval(id);
+  }, [phase, turnNumber]);
+
+  // ── Smooth hold-progress (0→1) for the face ring — fills as the user holds. ──
+  useEffect(() => {
+    if (phase !== 'turn' && phase !== 'return_center') {
+      setHoldProgress(0);
+      return;
+    }
+    const holdMs = phase === 'turn' ? TURN_HOLD_MS : RETURN_HOLD_MS;
+    const start = performance.now();
+    setHoldProgress(0);
+    const id = setInterval(() => {
+      const p = Math.min(1, (performance.now() - start) / holdMs);
+      setHoldProgress(p);
+      if (p >= 1) clearInterval(id);
+    }, 50);
     return () => clearInterval(id);
   }, [phase, turnNumber]);
 
@@ -368,6 +388,7 @@ export function useActiveLiveness(options: UseActiveLivenessOptions): UseActiveL
     instruction: getInstructionForPhase(phase, direction),
     progress,
     countdown,
+    holdProgress,
     turnNumber,
     faceDetected: true,  // No client-side detection — always true when camera is active
     currentYaw: 0,       // No client-side yaw estimation
