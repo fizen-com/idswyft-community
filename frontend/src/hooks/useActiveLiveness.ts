@@ -75,11 +75,11 @@ function pickRandomDirection(): ChallengeDirection {
   return Math.random() < 0.5 ? 'left' : 'right';
 }
 
-function getInstructionForPhase(phase: LivenessPhase, direction: ChallengeDirection): string {
+function getInstructionForPhase(phase: LivenessPhase, _direction: ChallengeDirection): string {
   switch (phase) {
     case 'ready': return 'Umieść twarz w owalu i nie ruszaj się';
-    case 'turn': return direction === 'left' ? 'Obróć głowę w LEWO i przytrzymaj' : 'Obróć głowę w PRAWO i przytrzymaj';
-    case 'return_center': return 'Wróć — patrz prosto w kamerę';
+    case 'turn': return 'Obróć głowę i trzymaj';
+    case 'return_center': return 'Wróć na środek i trzymaj';
     case 'capturing': return 'Nie ruszaj się — zapisuję…';
     case 'completed': return 'Gotowe — twarz potwierdzona!';
     case 'failed': return 'Nie udało się. Dotknij, aby spróbować ponownie.';
