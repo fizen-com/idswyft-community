@@ -314,13 +314,18 @@ export function ActiveLivenessCapture({
             </div>
           </div>
 
-          <p className="lv-intro-body">
-            Obróć powoli głowę w bok i wróć do środka, gdy pojawi się prośba.
-            Użyjemy przedniej kamery, by potwierdzić, że to naprawdę Ty — obraz nie
-            jest zapisywany jako nagranie.
+          <p className="lv-intro-body" style={{ marginBottom: 4 }}>
+            Za chwilę poprosimy, abyś wykonał te kroki. Ważne: po każdym ruchu
+            <strong> przytrzymaj głowę nieruchomo</strong>, aż pasek się wypełni.
           </p>
+          <ol className="lv-steps">
+            <li><span className="lv-step-n">1</span> Obróć głowę w bok (w stronę strzałki) <strong>i przytrzymaj</strong></li>
+            <li><span className="lv-step-n">2</span> Wróć na środek, patrz w kamerę <strong>i przytrzymaj</strong></li>
+            <li><span className="lv-step-n">3</span> Powtórz w drugą stronę</li>
+          </ol>
           <div className="lv-sound-note">
-            🔊 Włącz dźwięk i wyłącz tryb cichy — będziemy mówić, co robić.
+            🔊 Włącz dźwięk i wyłącz tryb cichy — będziemy mówić, co robić. Obraz
+            nie jest zapisywany jako nagranie.
           </div>
           <button onClick={requestCamera} className="lv-btn-primary">
             Włącz kamerę
@@ -590,6 +595,23 @@ const LIVENESS_CSS = `
   font-family: var(--sans);
   font-size: 14px; line-height: 1.5;
   color: var(--mid);
+}
+.lv-steps {
+  list-style: none; margin: 4px 0 2px; padding: 0;
+  max-width: 340px; width: 100%;
+  display: flex; flex-direction: column; gap: 8px; text-align: left;
+}
+.lv-steps li {
+  display: flex; align-items: flex-start; gap: 10px;
+  font-family: var(--sans); font-size: 14px; line-height: 1.35; color: var(--ink);
+}
+.lv-steps strong { color: var(--accent-ink, var(--accent)); }
+.lv-step-n {
+  flex-shrink: 0;
+  width: 22px; height: 22px; border-radius: 50%;
+  background: var(--accent); color: #fff;
+  font-family: var(--sans); font-size: 12px; font-weight: 700;
+  display: flex; align-items: center; justify-content: center;
 }
 .lv-sound-note {
   max-width: 340px;
