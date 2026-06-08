@@ -250,9 +250,11 @@ export function ActiveLivenessCapture({
     phase,
     direction,
     instruction,
+    liveHint,
     progress,
     holdProgress,
     turnNumber,
+    trackingReady,
     error,
     retry,
   } = useActiveLiveness({
@@ -526,6 +528,11 @@ export function ActiveLivenessCapture({
 
             {error && <p className="lv-bar-error">{error}</p>}
 
+            {/* Live coaching hint (realtime tracking only) */}
+            {challengeActive && trackingReady && liveHint && (
+              <p className="lv-hint">{liveHint}</p>
+            )}
+
             {/* Hold progress bar — fills left→right while you hold the pose */}
             {challengeActive && (
               <div className="lv-holdbar">
@@ -671,6 +678,15 @@ const LIVENESS_CSS = `
   font-size: 24px; font-weight: 700;
   color: #eafffb;
   text-shadow: 0 0 8px rgba(0,212,180,0.6);
+}
+
+/* ── Live coaching hint ── */
+.lv-hint {
+  margin: 0;
+  font-family: var(--sans);
+  font-size: 13px; font-weight: 600;
+  color: var(--accent);
+  letter-spacing: 0.01em;
 }
 
 /* ── Hold progress bar ── */
