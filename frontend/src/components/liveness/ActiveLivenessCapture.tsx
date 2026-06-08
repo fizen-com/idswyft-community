@@ -283,7 +283,7 @@ export function ActiveLivenessCapture({
       speak(`Obróć głowę ${dir} i trzymaj.`);
     } else if (phase === 'return_center') {
       vib?.(45);
-      speak('Wróć na środek.');
+      speak('Wróć na środek i trzymaj.');
     } else if (phase === 'completed') {
       vib?.([30, 50, 30]);
       speak('Gotowe.');
