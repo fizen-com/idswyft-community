@@ -519,7 +519,7 @@ export function ActiveLivenessCapture({
         {!isProcessing && (
           <div className="lv-bar">
             <p className="lv-bar-text" style={{
-              color: phase === 'completed' ? '#00d4b4' : phase === 'failed' ? '#ff3b5c' : '#e8f4f8',
+              color: phase === 'completed' ? '#0a8f5b' : phase === 'failed' ? '#ff3b5c' : 'var(--ink)',
             }}>
               {instruction}
             </p>
