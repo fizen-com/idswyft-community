@@ -464,24 +464,6 @@ export function ActiveLivenessCapture({
             strokeWidth={2.5}
             className={`lv-oval lv-oval--${borderState}`}
           />
-          {/* Hold-progress ring — fills around the face while you hold the pose */}
-          {challengeActive && (
-            <ellipse
-              cx={videoDims.w / 2}
-              cy={videoDims.h * 0.42}
-              rx={videoDims.w * 0.27}
-              ry={videoDims.h * 0.265}
-              fill="none"
-              stroke={holdProgress > 0.8 ? '#7CFFB2' : '#00ffdf'}
-              strokeWidth={7}
-              strokeLinecap="round"
-              pathLength={1}
-              strokeDasharray={1}
-              strokeDashoffset={1 - Math.max(0, Math.min(1, holdProgress))}
-              transform={`rotate(-90 ${videoDims.w / 2} ${videoDims.h * 0.42})`}
-              style={{ transition: 'stroke-dashoffset 0.08s linear, stroke 0.3s', filter: 'drop-shadow(0 0 8px rgba(0,255,223,0.55))' }}
-            />
-          )}
         </svg>
 
         {/* Scan line */}
@@ -543,6 +525,16 @@ export function ActiveLivenessCapture({
             </p>
 
             {error && <p className="lv-bar-error">{error}</p>}
+
+            {/* Hold progress bar — fills left→right while you hold the pose */}
+            {challengeActive && (
+              <div className="lv-holdbar">
+                <div
+                  className="lv-holdbar-fill"
+                  style={{ width: `${Math.round(Math.max(0, Math.min(1, holdProgress)) * 100)}%` }}
+                />
+              </div>
+            )}
 
             {/* Step label */}
             {challengeActive && (
@@ -679,6 +671,20 @@ const LIVENESS_CSS = `
   font-size: 24px; font-weight: 700;
   color: #eafffb;
   text-shadow: 0 0 8px rgba(0,212,180,0.6);
+}
+
+/* ── Hold progress bar ── */
+.lv-holdbar {
+  width: 100%; max-width: 280px; height: 8px;
+  background: var(--rule);
+  border-radius: 999px;
+  overflow: hidden;
+}
+.lv-holdbar-fill {
+  height: 100%;
+  background: var(--accent);
+  border-radius: 999px;
+  transition: width 0.09s linear;
 }
 
 /* ── Step label ── */
