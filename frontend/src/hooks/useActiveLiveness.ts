@@ -1,6 +1,4 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
-import { loadFaceLandmarker, detectYaw } from '../lib/faceTracker';
-import type { FaceLandmarker } from '@mediapipe/tasks-vision';
 
 // ─── Types ──────────────────────────────────────────────
 
@@ -50,17 +48,15 @@ export interface UseActiveLivenessReturn {
   phase: LivenessPhase;
   direction: ChallengeDirection;
   instruction: string;
-  /** Live coaching hint, e.g. "Obróć bardziej" / "Trzymaj" (realtime mode only). */
-  liveHint: string;
   progress: number;
-  /** Smooth 0→1 fill progress through the current action (for the bottom bar). */
+  /** Seconds remaining in the current hold phase (turn / return_center), else 0. */
+  countdown: number;
+  /** Smooth 0→1 fill progress through the current hold phase (for the face ring). */
   holdProgress: number;
-  /** Which scored turn we're on (1 or 2). */
+  /** Which scored turn we're on (1 or 2) — for "Obrót X z 2" labelling. */
   turnNumber: number;
   faceDetected: boolean;
   currentYaw: number;
-  /** True once the on-device face tracker is ready (realtime guidance active). */
-  trackingReady: boolean;
   error: string | null;
   retry: () => void;
 }
@@ -68,16 +64,8 @@ export interface UseActiveLivenessReturn {
 // ─── Constants ──────────────────────────────────────────
 
 const DEFAULT_CHALLENGE_TIMEOUT = 35000;
-const TURN_HOLD_MS = 3000;         // timed-fallback: hold turn for 3s
-const RETURN_HOLD_MS = 3000;       // timed-fallback: hold center for 3s
-
-// Realtime (MediaPipe) thresholds — client targets a clear turn; the engine only
-// needs ≥3° so capturing the peak here guarantees a server pass.
-const TARGET_YAW = 12;             // degrees — client target for "turned enough"
-const CENTER_YAW = 5;              // degrees — back-to-centre threshold
-const STABLE_MS = 320;             // hold target/centre this long to confirm
-const RT_TURN_TIMEOUT_MS = 22000;  // per-turn timeout in realtime mode
-const MODEL_LOAD_TIMEOUT_MS = 9000; // fall back to timed mode if not ready by now
+const TURN_HOLD_MS = 3000;         // hold turn for 3s — user needs time to turn head ≥12°
+const RETURN_HOLD_MS = 3000;       // hold center for 3s — unhurried return
 
 const VIRTUAL_CAMERA_REGEX = /obs|virtual|manycam|snap camera|fake|xsplit|streamlabs/i;
 
@@ -104,7 +92,8 @@ function getInstructionForPhase(phase: LivenessPhase, direction: ChallengeDirect
 const MAX_ANALYSIS_WIDTH = 640;
 const MAX_ANALYSIS_HEIGHT = 480;
 
-/** Capture a frame from video as base64 JPEG using the hidden canvas. */
+/** Capture a frame from video as base64 JPEG using the hidden canvas.
+ *  Downscales to MAX_ANALYSIS dimensions to keep payload small. */
 function captureFrameAsBase64(
   video: HTMLVideoElement,
   canvas: HTMLCanvasElement,
@@ -129,64 +118,52 @@ export function useActiveLiveness(options: UseActiveLivenessOptions): UseActiveL
     canvasElement,
     enabled,
     onComplete,
+    // onFallback is handled by the component (camera access errors), not the hook
     challengeTimeoutMs = DEFAULT_CHALLENGE_TIMEOUT,
   } = options;
 
   const [phase, setPhase] = useState<LivenessPhase>('ready');
   const [direction, setDirection] = useState<ChallengeDirection>(pickRandomDirection);
   const [progress, setProgress] = useState(0);
+  const [countdown, setCountdown] = useState(0);
   const [holdProgress, setHoldProgress] = useState(0);
   const [turnNumber, setTurnNumber] = useState(1);
-  const [currentYaw, setCurrentYaw] = useState(0);
-  const [liveHint, setLiveHint] = useState('');
-  const [trackingReady, setTrackingReady] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const phaseRef = useRef(phase);
-  const directionRef = useRef(direction);
   const framesRef = useRef<AnalysisFrame[]>([]);
   const challengeStartRef = useRef(0);
   const returnStartRef = useRef(0);
   const virtualCameraRef = useRef<{ label: string; suspected_virtual: boolean } | undefined>(undefined);
+  const animFrameRef = useRef(0);
   const turnDelayRef = useRef<ReturnType<typeof setTimeout>>(undefined);
   const turnCountRef = useRef(0);
   const scoredDirectionRef = useRef<ChallengeDirection>('left');
 
-  // Realtime tracking refs
-  const trackerRef = useRef<FaceLandmarker | null>(null);
-  const trackingReadyRef = useRef(false);
-  const rafRef = useRef(0);
-  const stableSinceRef = useRef(0);
-  const bestPeakRef = useRef<{ base64: string; absYaw: number } | null>(null);
-  const phaseStartRef = useRef(0);
-
+  // Keep phaseRef in sync
   useEffect(() => { phaseRef.current = phase; }, [phase]);
-  useEffect(() => { directionRef.current = direction; }, [direction]);
-  useEffect(() => { trackingReadyRef.current = trackingReady; }, [trackingReady]);
 
-  // ── Load the on-device face tracker (best-effort; falls back to timed mode) ──
+  // ── Countdown ticker for the hold phases (display only — independent of the
+  //    capture timers). Re-arms on every entry into 'turn'/'return_center'. ──
   useEffect(() => {
-    if (!enabled) return;
-    let cancelled = false;
-    const timeout = setTimeout(() => {
-      // Don't block forever — timed mode will drive the challenge if the model
-      // isn't ready. (trackingReady stays false.)
-    }, MODEL_LOAD_TIMEOUT_MS);
-    loadFaceLandmarker()
-      .then((lm) => {
-        if (cancelled) return;
-        trackerRef.current = lm;
-        setTrackingReady(true);
-      })
-      .catch(() => { /* timed fallback */ })
-      .finally(() => clearTimeout(timeout));
-    return () => { cancelled = true; clearTimeout(timeout); };
-  }, [enabled]);
+    if (phase !== 'turn' && phase !== 'return_center') {
+      setCountdown(0);
+      return;
+    }
+    const holdMs = phase === 'turn' ? TURN_HOLD_MS : RETURN_HOLD_MS;
+    setCountdown(Math.ceil(holdMs / 1000));
+    const id = setInterval(() => {
+      setCountdown((c) => Math.max(0, c - 1));
+    }, 1000);
+    return () => clearInterval(id);
+  }, [phase, turnNumber]);
 
-  // ── Countdown ticker (timed mode only — realtime drives holdProgress live) ──
+  // ── Smooth hold-progress (0→1) for the face ring — fills as the user holds. ──
   useEffect(() => {
-    if (trackingReady) return;
-    if (phase !== 'turn' && phase !== 'return_center') { setHoldProgress(0); return; }
+    if (phase !== 'turn' && phase !== 'return_center') {
+      setHoldProgress(0);
+      return;
+    }
     const holdMs = phase === 'turn' ? TURN_HOLD_MS : RETURN_HOLD_MS;
     const start = performance.now();
     setHoldProgress(0);
@@ -196,118 +173,23 @@ export function useActiveLiveness(options: UseActiveLivenessOptions): UseActiveL
       if (p >= 1) clearInterval(id);
     }, 50);
     return () => clearInterval(id);
-  }, [phase, turnNumber, trackingReady]);
+  }, [phase, turnNumber]);
 
   // ── Virtual camera detection on mount ──
   useEffect(() => {
     if (!enabled || !videoElement) return;
     const stream = videoElement.srcObject as MediaStream | null;
     if (!stream) return;
+
     const track = stream.getVideoTracks()[0];
     if (track) {
+      const label = track.label;
       virtualCameraRef.current = {
-        label: track.label,
-        suspected_virtual: VIRTUAL_CAMERA_REGEX.test(track.label),
+        label,
+        suspected_virtual: VIRTUAL_CAMERA_REGEX.test(label),
       };
     }
   }, [enabled, videoElement]);
-
-  // ── Finalize: capture best frame and build metadata ──
-  const finalizeLiveness = useCallback(() => {
-    if (!canvasElement || !videoElement) {
-      setPhase('failed');
-      setError('Canvas not available for capture');
-      return;
-    }
-    canvasElement.width = videoElement.videoWidth || 640;
-    canvasElement.height = videoElement.videoHeight || 480;
-    const ctx = canvasElement.getContext('2d');
-    if (!ctx) {
-      setPhase('failed');
-      setError('Canvas context not available');
-      return;
-    }
-    ctx.drawImage(videoElement, 0, 0);
-    canvasElement.toBlob(
-      (blob) => {
-        if (!blob) {
-          setPhase('failed');
-          setError('Frame capture failed');
-          return;
-        }
-        const metadata: LivenessMetadata = {
-          challenge_type: 'head_turn',
-          challenge_direction: scoredDirectionRef.current,
-          frames: framesRef.current,
-          start_timestamp: challengeStartRef.current,
-          end_timestamp: performance.now(),
-          screen_width: window.innerWidth,
-          screen_height: window.innerHeight,
-          virtual_camera_check: virtualCameraRef.current,
-        };
-        setProgress(1);
-        setPhase('completed');
-        onComplete(blob, metadata);
-      },
-      'image/jpeg',
-      0.92,
-    );
-  }, [canvasElement, videoElement, onComplete]);
-
-  // ── Shared transition: record the turn peak, then go to return_center ──
-  const recordPeakAndReturn = useCallback((peakBase64?: string) => {
-    if (!videoElement || !canvasElement) return;
-    const isFirstTurn = turnCountRef.current === 0;
-    framesRef.current.push({
-      frame_base64: peakBase64 || captureFrameAsBase64(videoElement, canvasElement),
-      timestamp: performance.now(),
-      phase: isFirstTurn ? 'turn1_peak' : 'turn_peak',
-    });
-    setProgress(isFirstTurn ? 1 / 4 : 3 / 4);
-    bestPeakRef.current = null;
-    stableSinceRef.current = 0;
-    returnStartRef.current = performance.now();
-    phaseStartRef.current = performance.now();
-    setHoldProgress(0);
-    setLiveHint('');
-    setPhase('return_center');
-  }, [videoElement, canvasElement]);
-
-  // ── Shared transition: record the return frame, then next turn or finalize ──
-  const recordReturnAndAdvance = useCallback(() => {
-    if (!videoElement || !canvasElement) return;
-    const isFirstTurn = turnCountRef.current === 0;
-    framesRef.current.push({
-      frame_base64: captureFrameAsBase64(videoElement, canvasElement),
-      timestamp: performance.now(),
-      phase: isFirstTurn ? 'turn1_return' : 'turn_return',
-    });
-    stableSinceRef.current = 0;
-    setHoldProgress(0);
-
-    if (isFirstTurn) {
-      setProgress(2 / 4);
-      framesRef.current.push({
-        frame_base64: captureFrameAsBase64(videoElement, canvasElement),
-        timestamp: performance.now(),
-        phase: 'turn_start',
-      });
-      turnCountRef.current = 1;
-      setTurnNumber(2);
-      setDirection(scoredDirectionRef.current);
-      setLiveHint('');
-      turnDelayRef.current = setTimeout(() => {
-        if (phaseRef.current === 'return_center') {
-          phaseStartRef.current = performance.now();
-          setPhase('turn');
-        }
-      }, 1200);
-    } else {
-      setProgress(1);
-      setPhase('capturing');
-      finalizeLiveness();
-    }
-  }, [videoElement, canvasElement, finalizeLiveness]);
 
   // ── Auto-start challenge when video is playing ──
   useEffect(() => {
@@ -321,14 +203,15 @@ export function useActiveLiveness(options: UseActiveLivenessOptions): UseActiveL
       scoredDirectionRef.current = firstDir === 'left' ? 'right' : 'left';
       setDirection(firstDir);
       challengeStartRef.current = performance.now();
-      bestPeakRef.current = null;
-      stableSinceRef.current = 0;
+
+      // Capture baseline frame for first turn
+      const base64 = captureFrameAsBase64(videoElement, canvasElement);
       framesRef.current.push({
-        frame_base64: captureFrameAsBase64(videoElement, canvasElement),
+        frame_base64: base64,
         timestamp: performance.now(),
         phase: 'turn1_start',
       });
-      phaseStartRef.current = performance.now();
+
       setPhase('turn');
     };
 
@@ -336,115 +219,146 @@ export function useActiveLiveness(options: UseActiveLivenessOptions): UseActiveL
       const timer = setTimeout(startChallenge, 2500);
       return () => clearTimeout(timer);
     } else {
-      const onPlaying = () => setTimeout(startChallenge, 2500);
+      const onPlaying = () => {
+        setTimeout(startChallenge, 2500);
+      };
       videoElement.addEventListener('playing', onPlaying);
       return () => videoElement.removeEventListener('playing', onPlaying);
     }
   }, [phase, videoElement, canvasElement, enabled]);
 
-  // ── TIMED fallback: turn phase (only when tracking isn't ready) ──
+  // ── Turn phase — wait for user to hold turn position ──
   useEffect(() => {
-    if (trackingReady) return;
     if (phase !== 'turn' || !videoElement || !canvasElement) return;
+
     let running = true;
+
     const timer = setTimeout(() => {
-      if (running) recordPeakAndReturn();
+      if (!running) return;
+
+      const isFirstTurn = turnCountRef.current === 0;
+      const base64 = captureFrameAsBase64(videoElement, canvasElement);
+      framesRef.current.push({
+        frame_base64: base64,
+        timestamp: performance.now(),
+        phase: isFirstTurn ? 'turn1_peak' : 'turn_peak',
+      });
+
+      setProgress(isFirstTurn ? 1 / 4 : 3 / 4);
+
+      returnStartRef.current = performance.now();
+      setPhase('return_center');
     }, TURN_HOLD_MS);
+
+    // Timeout check
     const timeoutTimer = setTimeout(() => {
       if (running && phaseRef.current === 'turn') {
         setPhase('failed');
         setError('Challenge timed out. Please try again.');
       }
     }, challengeTimeoutMs);
-    return () => { running = false; clearTimeout(timer); clearTimeout(timeoutTimer); };
-  }, [phase, videoElement, canvasElement, challengeTimeoutMs, trackingReady, recordPeakAndReturn]);
 
-  // ── TIMED fallback: return-to-center phase ──
+    return () => {
+      running = false;
+      clearTimeout(timer);
+      clearTimeout(timeoutTimer);
+    };
+  }, [phase, videoElement, canvasElement, challengeTimeoutMs]);
+
+  // ── Return to center phase ──
   useEffect(() => {
-    if (trackingReady) return;
     if (phase !== 'return_center' || !videoElement || !canvasElement) return;
+
     let running = true;
+
     const timer = setTimeout(() => {
-      if (running) recordReturnAndAdvance();
-    }, RETURN_HOLD_MS);
-    return () => { running = false; clearTimeout(timer); clearTimeout(turnDelayRef.current); };
-  }, [phase, videoElement, canvasElement, trackingReady, recordReturnAndAdvance]);
-
-  // ── REALTIME: yaw-driven loop (when the tracker is ready) ──
-  useEffect(() => {
-    if (!trackingReady || !trackerRef.current || !videoElement || !canvasElement) return;
-    if (phase !== 'turn' && phase !== 'return_center') return;
-
-    let running = true;
-    const tracker = trackerRef.current;
-    let lastTs = 0;
-
-    const loop = () => {
       if (!running) return;
-      const now = performance.now();
-      // Throttle detection to ~25fps; MediaPipe needs increasing timestamps.
-      if (now - lastTs >= 40 && videoElement.readyState >= 2) {
-        lastTs = now;
-        const { yaw, faceFound } = detectYaw(tracker, videoElement, now);
-        if (faceFound) setCurrentYaw(yaw);
-        const sign = directionRef.current === 'left' ? 1 : -1;
 
-        if (phaseRef.current === 'turn') {
-          const signed = yaw * sign;                 // progress toward target
-          const p = Math.max(0, Math.min(1, signed / TARGET_YAW));
-          setHoldProgress(p);
-          // Track the best (max-yaw) frame so we capture the true peak.
-          if (faceFound && signed > (bestPeakRef.current?.absYaw ?? 0)) {
-            bestPeakRef.current = {
-              base64: captureFrameAsBase64(videoElement, canvasElement),
-              absYaw: signed,
-            };
-          }
-          if (!faceFound) setLiveHint('Nie widzę twarzy — ustaw twarz w owalu');
-          else if (signed < 0) setLiveHint(directionRef.current === 'left' ? 'Obróć w lewo' : 'Obróć w prawo');
-          else if (signed < TARGET_YAW * 0.6) setLiveHint('Jeszcze trochę…');
-          else if (signed < TARGET_YAW) setLiveHint('Prawie — odrobinę dalej');
-          else setLiveHint('Trzymaj…');
+      const isFirstTurn = turnCountRef.current === 0;
+      const base64 = captureFrameAsBase64(videoElement, canvasElement);
+      framesRef.current.push({
+        frame_base64: base64,
+        timestamp: performance.now(),
+        phase: isFirstTurn ? 'turn1_return' : 'turn_return',
+      });
 
-          if (faceFound && signed >= TARGET_YAW) {
-            if (!stableSinceRef.current) stableSinceRef.current = now;
-            else if (now - stableSinceRef.current >= STABLE_MS) {
-              recordPeakAndReturn(bestPeakRef.current?.base64);
-            }
-          } else {
-            stableSinceRef.current = 0;
-          }
-        } else if (phaseRef.current === 'return_center') {
-          const absY = Math.abs(yaw);
-          const p = Math.max(0, Math.min(1, 1 - absY / TARGET_YAW));
-          setHoldProgress(p);
-          if (!faceFound) setLiveHint('Nie widzę twarzy');
-          else if (absY > CENTER_YAW) setLiveHint('Wróć na środek');
-          else setLiveHint('Trzymaj…');
+      if (isFirstTurn) {
+        // First turn done — capture scored baseline and start second turn
+        setProgress(2 / 4);
+        const startBase64 = captureFrameAsBase64(videoElement, canvasElement);
+        framesRef.current.push({
+          frame_base64: startBase64,
+          timestamp: performance.now(),
+          phase: 'turn_start',
+        });
+        turnCountRef.current = 1;
+        setTurnNumber(2);
+        setDirection(scoredDirectionRef.current);
+        // Brief pause before second turn instruction
+        turnDelayRef.current = setTimeout(() => {
+          if (phaseRef.current === 'return_center') setPhase('turn');
+        }, 1200);
+      } else {
+        // Second turn done — finalize
+        setProgress(1);
+        setPhase('capturing');
+        finalizeLiveness();
+      }
+    }, RETURN_HOLD_MS);
 
-          if (faceFound && absY <= CENTER_YAW) {
-            if (!stableSinceRef.current) stableSinceRef.current = now;
-            else if (now - stableSinceRef.current >= STABLE_MS) {
-              recordReturnAndAdvance();
-            }
-          } else {
-            stableSinceRef.current = 0;
-          }
-        }
+    return () => {
+      running = false;
+      clearTimeout(timer);
+      clearTimeout(turnDelayRef.current);
+    };
+  }, [phase, videoElement, canvasElement]); // eslint-disable-line react-hooks/exhaustive-deps
 
-        // Per-turn timeout
-        if (phaseStartRef.current && now - phaseStartRef.current > RT_TURN_TIMEOUT_MS) {
-          running = false;
+  // ── Finalize: capture best frame and build metadata ──
+  const finalizeLiveness = useCallback(() => {
+    if (!canvasElement || !videoElement) {
+      setPhase('failed');
+      setError('Canvas not available for capture');
+      return;
+    }
+
+    // Capture the best (final, centered) frame as blob
+    canvasElement.width = videoElement.videoWidth || 640;
+    canvasElement.height = videoElement.videoHeight || 480;
+    const ctx = canvasElement.getContext('2d');
+    if (!ctx) {
+      setPhase('failed');
+      setError('Canvas context not available');
+      return;
+    }
+    ctx.drawImage(videoElement, 0, 0);
+
+    canvasElement.toBlob(
+      (blob) => {
+        if (!blob) {
           setPhase('failed');
-          setError('Nie wykryto ruchu na czas. Spróbuj ponownie.');
+          setError('Frame capture failed');
           return;
         }
-      }
-      rafRef.current = requestAnimationFrame(loop);
-    };
-    rafRef.current = requestAnimationFrame(loop);
-    return () => { running = false; cancelAnimationFrame(rafRef.current); };
-  }, [phase, trackingReady, videoElement, canvasElement, recordPeakAndReturn, recordReturnAndAdvance]);
+
+        const metadata: LivenessMetadata = {
+          challenge_type: 'head_turn',
+          challenge_direction: scoredDirectionRef.current,
+          frames: framesRef.current,
+          start_timestamp: challengeStartRef.current,
+          end_timestamp: performance.now(),
+          screen_width: window.innerWidth,
+          screen_height: window.innerHeight,
+          virtual_camera_check: virtualCameraRef.current,
+        };
+
+        setProgress(1);
+        setPhase('completed');
+        onComplete(blob, metadata);
+      },
+      'image/jpeg',
+      0.92,
+    );
+  }, [canvasElement, videoElement, onComplete]);
 
   // ── Retry ──
   const retry = useCallback(() => {
@@ -452,14 +366,10 @@ export function useActiveLiveness(options: UseActiveLivenessOptions): UseActiveL
     turnCountRef.current = 0;
     challengeStartRef.current = 0;
     returnStartRef.current = 0;
-    stableSinceRef.current = 0;
-    bestPeakRef.current = null;
     setDirection(pickRandomDirection());
     setError(null);
     setProgress(0);
-    setHoldProgress(0);
-    setCurrentYaw(0);
-    setLiveHint('');
+    setCountdown(0);
     setTurnNumber(1);
     setPhase('ready');
   }, []);
@@ -467,7 +377,7 @@ export function useActiveLiveness(options: UseActiveLivenessOptions): UseActiveL
   // ── Cleanup ──
   useEffect(() => {
     return () => {
-      cancelAnimationFrame(rafRef.current);
+      cancelAnimationFrame(animFrameRef.current);
       if (turnDelayRef.current) clearTimeout(turnDelayRef.current);
     };
   }, []);
@@ -476,13 +386,12 @@ export function useActiveLiveness(options: UseActiveLivenessOptions): UseActiveL
     phase,
     direction,
     instruction: getInstructionForPhase(phase, direction),
-    liveHint,
     progress,
+    countdown,
     holdProgress,
     turnNumber,
-    faceDetected: true,
-    currentYaw,
-    trackingReady,
+    faceDetected: true,  // No client-side detection — always true when camera is active
+    currentYaw: 0,       // No client-side yaw estimation
     error,
     retry,
   };
