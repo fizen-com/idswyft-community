@@ -314,18 +314,13 @@ export function ActiveLivenessCapture({
             </div>
           </div>
 
-          <p className="lv-intro-body" style={{ marginBottom: 4 }}>
-            Za chwilę poprosimy, abyś wykonał te kroki. Ważne: po każdym ruchu
-            <strong> przytrzymaj głowę nieruchomo</strong>, aż pasek się wypełni.
-          </p>
           <ol className="lv-steps">
-            <li><span className="lv-step-n">1</span> Obróć głowę w bok (w stronę strzałki) <strong>i przytrzymaj</strong></li>
-            <li><span className="lv-step-n">2</span> Wróć na środek, patrz w kamerę <strong>i przytrzymaj</strong></li>
+            <li><span className="lv-step-n">1</span> Obróć głowę w bok <strong>i przytrzymaj</strong></li>
+            <li><span className="lv-step-n">2</span> Wróć na środek <strong>i przytrzymaj</strong></li>
             <li><span className="lv-step-n">3</span> Powtórz w drugą stronę</li>
           </ol>
           <div className="lv-sound-note">
-            🔊 Włącz dźwięk i wyłącz tryb cichy — będziemy mówić, co robić. Obraz
-            nie jest zapisywany jako nagranie.
+            🔊 Włącz dźwięk — będziemy mówić, co robić.
           </div>
           <button onClick={requestCamera} className="lv-btn-primary">
             Włącz kamerę
