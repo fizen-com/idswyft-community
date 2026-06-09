@@ -7,7 +7,6 @@ import UserVerificationPage from './pages/UserVerificationPage'
 import PageBuilderPage from './pages/PageBuilderPage'
 import { LiveCapturePage } from './pages/LiveCapturePage'
 import MobileVerificationPage from './pages/MobileVerificationPage'
-import LivenessTestPage from './pages/LivenessTestPage'
 import { AdminLogin } from './pages/AdminLogin'
 import { VerificationManagement } from './pages/VerificationManagement'
 import { DevelopersList } from './pages/DevelopersList'
@@ -45,7 +44,6 @@ function App() {
         <Route path="/developer/page-builder" element={<PageBuilderPage />} />
         <Route path="/live-capture" element={<LiveCapturePage />} />
         <Route path="/verify/mobile" element={<MobileVerificationPage />} />
-        <Route path="/liveness-test" element={<LivenessTestPage />} />
         <Route path="/docs/markdown" element={<MarkdownDocsPage />} />
         <Route path="/docs/review" element={<ReviewDashboardDocs />} />
         <Route path="/docs/guides" element={<DocsGuides />} />
